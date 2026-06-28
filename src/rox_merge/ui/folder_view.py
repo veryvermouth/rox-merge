@@ -191,6 +191,14 @@ class FolderCompareWindow(QMainWindow):
         self._open_file_pair(node)
 
     def _open_file_pair(self, node: CompareNode) -> None:
+        # 분할 모드 dirty 경고 (PLAN §6.4): 아래 창에 미저장 변경이 있으면
+        # 곧바로 교체하지 않고 2지선다(현재 창 유지 / 무시하고 열기)로 확인.
+        if not self._diff.isHidden():
+            self._ctl.commit_edit()  # 진행 중 타이핑 반영
+            if self._ctl.left.dirty or self._ctl.right.dirty:
+                if not self._confirm_discard():
+                    return
+
         left_doc = self._load(self._left_root / node.relpath) if node.left_exists else new_document()
         if left_doc is None:
             return
@@ -217,6 +225,17 @@ class FolderCompareWindow(QMainWindow):
             QMessageBox.critical(self, "저장 실패", str(exc))
             return
         self._refresh()  # 저장 후 상태 갱신
+
+    def _confirm_discard(self) -> bool:
+        """미저장 변경 경고. '무시하고 열기'면 True, '현재 창 유지'면 False."""
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("저장하지 않은 변경")
+        box.setText("아래 비교 창에 저장하지 않은 편집이 있습니다.\n무시하고 다른 파일을 열까요?")
+        discard = box.addButton("무시하고 열기", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("현재 창 유지", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        return box.clickedButton() is discard
 
     def _show_diff(self) -> None:
         if self._diff.isHidden():

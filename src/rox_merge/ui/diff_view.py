@@ -430,12 +430,15 @@ class DiffView(QAbstractScrollArea):
         first = self.verticalScrollBar().value()
         last = first + self._visible_rows() + 1
         side_w = self._side_w()
+        gutter_w = self._gutter_w()
         for h in self._result.hunks:
             if not (first <= h.row_start < last):
                 continue
             y = (h.row_start - first) * self._row_h
+            # 왼쪽 버튼: 왼쪽 텍스트 영역의 안쪽(가운데 쪽) 끝
             left_btn = QRect(side_w - _BTN_W, y, _BTN_W, self._row_h)
-            right_btn = QRect(side_w + _CENTER_W, y, _BTN_W, self._row_h)
+            # 오른쪽 버튼: 오른쪽 거터(줄 번호) 다음, 텍스트 영역 시작점 (줄 번호 가리지 않게)
+            right_btn = QRect(side_w + _CENTER_W + gutter_w, y, _BTN_W, self._row_h)
             rects.append((left_btn, h.id, "l2r"))
             rects.append((right_btn, h.id, "r2l"))
         return rects

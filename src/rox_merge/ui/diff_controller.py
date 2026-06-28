@@ -77,6 +77,7 @@ class DiffController(QObject):
 
     def _on_edit_committed(self, side: str, old_lines, new_lines) -> None:
         doc = self.left if side == "left" else self.right
+        doc.dirty = True  # 직접 편집도 미저장 변경으로 표시
         self.undo.record(SetLinesCommand(doc, old_lines, new_lines))
         self.recomputed.emit()
 
