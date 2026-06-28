@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from rox_merge.app.commands import UndoStack, make_apply_hunk
 from rox_merge.app.compare_model import build_result, step_hunk
 from rox_merge.core.diff import DiffOptions
 from rox_merge.core.document import Document
@@ -32,10 +33,12 @@ class MainWindow(QMainWindow):
         self._left: Document = new_document()
         self._right: Document = new_document()
         self._options = DiffOptions()
+        self._undo = UndoStack()
 
         self._view = DiffView()
         self._overview = OverviewBar()
         self._view.active_side_changed.connect(self._on_active_side_changed)
+        self._view.merge_requested.connect(self._on_merge)
         self._overview.row_clicked.connect(self._view.verticalScrollBar().setValue)
 
         central = QWidget()
@@ -57,6 +60,9 @@ class MainWindow(QMainWindow):
         self._add_action(bar, "오른쪽 열기", "Ctrl+Shift+O", lambda: self._open("right"))
         self._add_action(bar, "저장", "Ctrl+S", self._save_active)
         self._add_action(bar, "다른 이름으로", "Ctrl+Shift+S", lambda: self._save_active(as_new=True))
+        bar.addSeparator()
+        self._add_action(bar, "실행 취소", "Ctrl+Z", self._undo_action)
+        self._add_action(bar, "다시 실행", ["Ctrl+Shift+Z", "Ctrl+Y"], self._redo_action)
         bar.addSeparator()
         self._add_action(bar, "이전 차이", "Ctrl+2", lambda: self._jump(-1))
         self._add_action(bar, "다음 차이", "Ctrl+3", lambda: self._jump(+1))
@@ -108,6 +114,24 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "저장 실패", str(exc))
             return
         self._update_title()
+
+    def _on_merge(self, hunk_id: int, direction: str) -> None:
+        hunks = self._view.result.hunks
+        if not (0 <= hunk_id < len(hunks)):
+            return
+        command = make_apply_hunk(self._left, self._right, hunks[hunk_id], direction)
+        self._undo.push(command)
+        self._recompute()
+
+    def _undo_action(self) -> None:
+        if self._undo.can_undo():
+            self._undo.undo()
+            self._recompute()
+
+    def _redo_action(self) -> None:
+        if self._undo.can_redo():
+            self._undo.redo()
+            self._recompute()
 
     def _jump(self, delta: int) -> None:
         result = self._view.result

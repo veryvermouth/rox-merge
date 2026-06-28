@@ -9,15 +9,20 @@ Phase 2는 뷰어(읽기 전용). 직접 편집/병합은 Phase 3에서 추가.
 from __future__ import annotations
 
 from PySide6.QtCore import QRect, Qt, Signal
-from PySide6.QtGui import QFont, QFontMetrics, QPainter
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter
 from PySide6.QtWidgets import QAbstractScrollArea
+
+_BTN_BG = QColor(255, 255, 255)
+_BTN_BORDER = QColor(150, 150, 150)
+_BTN_TEXT = QColor(60, 60, 60)
 
 from rox_merge.core.diff import KIND_EQUAL, DiffResult
 from rox_merge.ui.theme import Theme
 
 _GUTTER_PAD = 10
 _TEXT_PAD = 6
-_CENTER_W = 14
+_CENTER_W = 18
+_BTN_W = 18
 _MIN_FONT_PT = 6
 _MAX_FONT_PT = 40
 
@@ -25,7 +30,8 @@ _MAX_FONT_PT = 40
 class DiffView(QAbstractScrollArea):
     """좌/우 라인 목록 + DiffResult를 받아 정렬 렌더링하는 뷰어."""
 
-    active_side_changed = Signal(str)  # "left" | "right"
+    active_side_changed = Signal(str)        # "left" | "right"
+    merge_requested = Signal(int, str)       # (hunk_id, "l2r" | "r2l")
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -134,12 +140,34 @@ class DiffView(QAbstractScrollArea):
         self.verticalScrollBar().setValue(self.verticalScrollBar().value() + steps)
 
     def mousePressEvent(self, event):  # noqa: N802 (Qt)
-        x = event.position().x()
-        side = "left" if x < self._side_w() + _CENTER_W / 2 else "right"
+        pos = event.position()
+        # 병합 버튼 먼저 히트 테스트
+        for rect, hid, direction in self._button_rects():
+            if rect.contains(int(pos.x()), int(pos.y())):
+                self.merge_requested.emit(hid, direction)
+                return
+
+        side = "left" if pos.x() < self._side_w() + _CENTER_W / 2 else "right"
         if side != self._active_side:
             self._active_side = side
             self.active_side_changed.emit(side)
             self.viewport().update()
+
+    def _button_rects(self) -> list[tuple[QRect, int, str]]:
+        """현재 보이는 hunk의 병합 버튼 (rect, hunk_id, 방향) 목록."""
+        rects: list[tuple[QRect, int, str]] = []
+        first = self.verticalScrollBar().value()
+        last = first + self._visible_rows() + 1
+        side_w = self._side_w()
+        for h in self._result.hunks:
+            if not (first <= h.row_start < last):
+                continue
+            y = (h.row_start - first) * self._row_h
+            left_btn = QRect(side_w - _BTN_W, y, _BTN_W, self._row_h)
+            right_btn = QRect(side_w + _CENTER_W, y, _BTN_W, self._row_h)
+            rects.append((left_btn, h.id, "l2r"))   # 왼쪽 → 오른쪽
+            rects.append((right_btn, h.id, "r2l"))   # 오른쪽 → 왼쪽
+        return rects
 
     def set_font_point_size(self, pt: int) -> None:
         pt = max(_MIN_FONT_PT, min(_MAX_FONT_PT, pt))
@@ -193,7 +221,20 @@ class DiffView(QAbstractScrollArea):
                 painter, side_w + _CENTER_W, side_w, gutter_w, y, hscroll,
                 row.right_index, self._right, row.kind, row.right_spans, is_current,
             )
+
+        self._paint_buttons(painter)
         painter.end()
+
+    def _paint_buttons(self, painter) -> None:
+        painter.save()
+        for rect, _hid, direction in self._button_rects():
+            painter.fillRect(rect, _BTN_BG)
+            painter.setPen(_BTN_BORDER)
+            painter.drawRect(rect.adjusted(0, 0, -1, -1))
+            painter.setPen(_BTN_TEXT)
+            arrow = "→" if direction == "l2r" else "←"
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, arrow)
+        painter.restore()
 
     def _paint_cell(self, painter, x0, side_w, gutter_w, y, hscroll,
                     line_index, lines, kind, spans, is_current):

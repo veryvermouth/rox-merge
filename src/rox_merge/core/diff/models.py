@@ -53,6 +53,9 @@ class Hunk:
     ``row_start``/``row_end`` 는 정렬(rows) 인덱스 범위 [start, end).
     ``left_range``/``right_range`` 는 원본 라인 인덱스 범위 [start, end);
     해당 쪽에 라인이 없으면(순수 insert/delete) ``None``.
+    ``left_anchor``/``right_anchor`` 는 각 문서에서 이 hunk가 시작하는 라인 인덱스
+    (= hunk 앞쪽 라인 수). 병합 시 삽입/교체 위치로 쓴다. 라인이 있으면
+    ``*_range[0]`` 과 같고, 없으면(순수 insert/delete) 삽입 지점을 가리킨다.
     """
 
     id: int
@@ -61,6 +64,8 @@ class Hunk:
     row_end: int
     left_range: tuple[int, int] | None
     right_range: tuple[int, int] | None
+    left_anchor: int = 0
+    right_anchor: int = 0
 
 
 @dataclass

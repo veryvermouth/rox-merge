@@ -200,17 +200,30 @@ def _merge_spans(spans: list[Span]) -> list[Span]:
 
 
 def _build_hunks(rows: list[Row]) -> list[Hunk]:
-    """연속된 비-equal 행을 hunk로 묶는다."""
+    """연속된 비-equal 행을 hunk로 묶는다. 병합용 앵커도 함께 계산."""
     hunks: list[Hunk] = []
     hid = 0
     i = 0
     n = len(rows)
+    left_consumed = 0   # 지금까지 지나온 왼쪽 실제 라인 수
+    right_consumed = 0
     while i < n:
         if rows[i].kind == KIND_EQUAL:
+            if rows[i].left_index is not None:
+                left_consumed += 1
+            if rows[i].right_index is not None:
+                right_consumed += 1
             i += 1
             continue
+
         start = i
+        left_anchor = left_consumed
+        right_anchor = right_consumed
         while i < n and rows[i].kind != KIND_EQUAL:
+            if rows[i].left_index is not None:
+                left_consumed += 1
+            if rows[i].right_index is not None:
+                right_consumed += 1
             i += 1
         block = rows[start:i]
 
@@ -234,6 +247,8 @@ def _build_hunks(rows: list[Row]) -> list[Hunk]:
                 row_end=i,
                 left_range=left_range,
                 right_range=right_range,
+                left_anchor=left_anchor,
+                right_anchor=right_anchor,
             )
         )
         hid += 1
