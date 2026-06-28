@@ -1,0 +1,9 @@
+# 저장소에는 LF로 정규화해 저장하고, 체크아웃 시 OS에 맞게 변환.
+* text=auto eol=lf
+
+# 명시적으로 텍스트 취급할 소스/문서.
+*.py    text eol=lf
+*.toml  text eol=lf
+*.md    text eol=lf
+*.cfg   text eol=lf
+*.ini   text eol=lf

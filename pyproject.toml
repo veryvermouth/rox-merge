@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rox-merge"
+version = "0.1.0"
+description = "Araxis Merge 류의 파일·폴더 비교/병합 도구"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "PySide6>=6.6",
+    "charset-normalizer>=3.3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
