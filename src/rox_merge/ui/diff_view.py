@@ -51,6 +51,7 @@ class DiffView(QAbstractScrollArea):
         self._active_side = "left"
         self._base_font_pt = 11
         self._read_only = False
+        self._content_px = 0  # 가장 긴 줄의 실제 픽셀 너비(캐시)
 
         # 커서(활성 쪽 문서 기준): 라인/열
         self._cur_line = 0
@@ -77,6 +78,7 @@ class DiffView(QAbstractScrollArea):
         if self._current_hunk >= len(result.hunks):
             self._current_hunk = -1
         self._clamp_cursor()
+        self._recompute_content_width()
         self._update_scrollbars()
         self.viewport().update()
 
@@ -120,12 +122,18 @@ class DiffView(QAbstractScrollArea):
         return max(1, self.viewport().height() // self._row_h)
 
     def _content_width(self) -> int:
-        longest = 0
-        for s in self._left():
-            longest = max(longest, len(s))
-        for s in self._right():
-            longest = max(longest, len(s))
-        return longest * self._char_w + 2 * _TEXT_PAD
+        return self._content_px
+
+    def _recompute_content_width(self) -> None:
+        """가장 긴 줄의 실제 픽셀 너비를 계산해 캐시한다(전각/탭 정확)."""
+        lines = self._left() + self._right()
+        if len(lines) > 20000:
+            # 대용량: 글자 수 근사로 폴백
+            longest = max((len(s) for s in lines), default=0)
+            self._content_px = longest * self._char_w + 2 * _TEXT_PAD
+            return
+        width = max((self._fm.horizontalAdvance(s) for s in lines), default=0)
+        self._content_px = width + 2 * _TEXT_PAD
 
     # ------------------------------------------------------------ scrollbars
     def _update_scrollbars(self) -> None:
@@ -170,6 +178,7 @@ class DiffView(QAbstractScrollArea):
         font.setPointSize(pt)
         self.setFont(font)
         self._update_metrics()
+        self._recompute_content_width()
         self._update_scrollbars()
         self.viewport().update()
 
@@ -350,14 +359,34 @@ class DiffView(QAbstractScrollArea):
 
     def _ensure_cursor_visible(self) -> None:
         row = self._cursor_row()
-        if row is None:
+        if row is not None:
+            first = self.verticalScrollBar().value()
+            visible = self._visible_rows()
+            if row < first:
+                self.verticalScrollBar().setValue(row)
+            elif row >= first + visible:
+                self.verticalScrollBar().setValue(row - visible + 1)
+        self._ensure_cursor_visible_h()
+
+    def _ensure_cursor_visible_h(self) -> None:
+        """커서가 창 너비를 벗어나면 가로로 따라 스크롤한다."""
+        lines = self._active_lines()
+        if not lines or self._cur_line >= len(lines):
             return
-        first = self.verticalScrollBar().value()
-        visible = self._visible_rows()
-        if row < first:
-            self.verticalScrollBar().setValue(row)
-        elif row >= first + visible:
-            self.verticalScrollBar().setValue(row - visible + 1)
+        text = lines[self._cur_line]
+        col = min(self._cur_col, len(text))
+        cx = self._fm.horizontalAdvance(text[:col])  # 텍스트 시작 기준 커서 x
+        view_w = max(1, self._side_w() - self._gutter_w() - _TEXT_PAD)
+        margin = self._char_w * 3
+        hbar = self.horizontalScrollBar()
+        hscroll = hbar.value()
+        if cx < hscroll:
+            hbar.setValue(max(0, cx - margin))
+        elif cx > hscroll + view_w - margin:
+            target = cx - view_w + margin
+            if target > hbar.maximum():
+                hbar.setMaximum(target)
+            hbar.setValue(target)
 
     def _cursor_row(self) -> int | None:
         """활성 쪽 커서 라인이 위치한 정렬 행 인덱스(없으면 None)."""
@@ -434,10 +463,10 @@ class DiffView(QAbstractScrollArea):
             if not (first <= h.row_start < last):
                 continue
             y = (h.row_start - first) * self._row_h
-            # 왼쪽 버튼: 왼쪽 텍스트 영역의 안쪽(가운데 쪽) 끝
+            # 왼쪽 버튼: 왼쪽 창의 오른쪽 끝(가운데 구분선 옆)
             left_btn = QRect(side_w - _BTN_W, y, _BTN_W, self._row_h)
-            # 오른쪽 버튼: 가운데 구분선 영역(오른쪽 줄 번호보다 앞)에 배치
-            right_btn = QRect(side_w + _CENTER_W - _BTN_W, y, _BTN_W, self._row_h)
+            # 오른쪽 버튼: 오른쪽 창의 오른쪽 끝(왼쪽 창과 대칭)
+            right_btn = QRect(self.viewport().width() - _BTN_W, y, _BTN_W, self._row_h)
             rects.append((left_btn, h.id, "l2r"))
             rects.append((right_btn, h.id, "r2l"))
         return rects
