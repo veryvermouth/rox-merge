@@ -73,6 +73,28 @@ def make_apply_hunk(
     raise ValueError(f"알 수 없는 방향: {direction!r}")
 
 
+class SetLinesCommand:
+    """문서 전체 라인을 스냅샷 기반으로 교체하는 명령(직접 편집용).
+
+    라이브로 이미 적용된 편집을 :meth:`UndoStack.record` 로 기록하거나,
+    undo/redo 시 스냅샷으로 정확히 복원한다. ``lines`` 의 리스트 동일성을
+    유지하기 위해 슬라이스 할당(``[:]``)을 쓴다.
+    """
+
+    def __init__(self, target: Document, old_lines: list[str], new_lines: list[str]):
+        self._target = target
+        self._old = list(old_lines)
+        self._new = list(new_lines)
+
+    def apply(self) -> None:
+        self._target.lines[:] = self._new
+        self._target.dirty = True
+
+    def undo(self) -> None:
+        self._target.lines[:] = self._old
+        self._target.dirty = True
+
+
 class UndoStack:
     """편집·병합 공유 Undo/Redo 스택 (PLAN §6.2 통합 스택)."""
 
@@ -83,6 +105,11 @@ class UndoStack:
     def push(self, command: Command) -> None:
         """명령을 실행하고 스택에 쌓는다. 새 명령은 redo 이력을 비운다."""
         command.apply()
+        self._undo.append(command)
+        self._redo.clear()
+
+    def record(self, command: Command) -> None:
+        """이미 적용된 명령을 기록만 한다(직접 편집 라이브 적용용)."""
         self._undo.append(command)
         self._redo.clear()
 

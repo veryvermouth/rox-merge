@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from PySide6.QtCore import QTimer
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -15,7 +16,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from rox_merge.app.commands import UndoStack, make_apply_hunk
+from rox_merge.app.commands import SetLinesCommand, UndoStack, make_apply_hunk
 from rox_merge.app.compare_model import build_result, step_hunk
 from rox_merge.core.diff import DiffOptions
 from rox_merge.core.document import Document
@@ -39,7 +40,15 @@ class MainWindow(QMainWindow):
         self._overview = OverviewBar()
         self._view.active_side_changed.connect(self._on_active_side_changed)
         self._view.merge_requested.connect(self._on_merge)
+        self._view.edited.connect(self._schedule_recompute)
+        self._view.edit_committed.connect(self._on_edit_committed)
         self._overview.row_clicked.connect(self._view.verticalScrollBar().setValue)
+
+        # 편집 후 debounce 재계산 (PLAN §4.6, 150ms)
+        self._recompute_timer = QTimer(self)
+        self._recompute_timer.setSingleShot(True)
+        self._recompute_timer.setInterval(150)
+        self._recompute_timer.timeout.connect(self._recompute)
 
         central = QWidget()
         layout = QHBoxLayout(central)
@@ -101,6 +110,7 @@ class MainWindow(QMainWindow):
         self._recompute()
 
     def _save_active(self, as_new: bool = False) -> None:
+        self._view.commit_edit()
         side = self._view.active_side
         doc = self._left if side == "left" else self._right
         path = doc.path
@@ -116,6 +126,7 @@ class MainWindow(QMainWindow):
         self._update_title()
 
     def _on_merge(self, hunk_id: int, direction: str) -> None:
+        self._view.commit_edit()
         hunks = self._view.result.hunks
         if not (0 <= hunk_id < len(hunks)):
             return
@@ -123,12 +134,22 @@ class MainWindow(QMainWindow):
         self._undo.push(command)
         self._recompute()
 
+    def _schedule_recompute(self) -> None:
+        self._recompute_timer.start()
+
+    def _on_edit_committed(self, side: str, old_lines, new_lines) -> None:
+        doc = self._left if side == "left" else self._right
+        self._undo.record(SetLinesCommand(doc, old_lines, new_lines))
+        self._update_title()
+
     def _undo_action(self) -> None:
+        self._view.commit_edit()
         if self._undo.can_undo():
             self._undo.undo()
             self._recompute()
 
     def _redo_action(self) -> None:
+        self._view.commit_edit()
         if self._undo.can_redo():
             self._undo.redo()
             self._recompute()
@@ -157,7 +178,7 @@ class MainWindow(QMainWindow):
 
     def _recompute(self) -> None:
         result = build_result(self._left, self._right, self._options)
-        self._view.set_data(self._left.lines, self._right.lines, result)
+        self._view.set_data(self._left, self._right, result)
         self._overview.set_result(result)
         self._update_title()
 
