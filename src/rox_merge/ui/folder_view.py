@@ -1,6 +1,7 @@
 """폴더 비교 윈도우 (PLAN §6.4) — 분할 모드.
 
-위: 폴더 비교 트리, 아래: 더블클릭한 파일의 diff 뷰(읽기 전용).
+위: 좌/우 대응 폴더 트리(왼쪽 | 오른쪽, 가운데 기준 동일 너비), 상태는 색으로 표시.
+아래: 더블클릭한 파일의 diff 뷰(편집 가능). diff 보기 중 Esc → 트리 화면 복귀.
 필터(다른 항목만), 전체 펼치기/접기(Ctrl+]/[/0), 비교 정밀도 토글,
 초기 확장은 '차이 있는 곳만'.
 """
@@ -13,6 +14,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QBrush, QColor, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QFileDialog,
+    QHeaderView,
     QMainWindow,
     QMessageBox,
     QSplitter,
@@ -20,7 +22,6 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem,
 )
 
-from rox_merge.app.compare_model import build_result
 from rox_merge.core.folder_compare import (
     DIFFERENT,
     LEFT_ONLY,
@@ -31,15 +32,10 @@ from rox_merge.core.folder_compare import (
     CompareNode,
     compare_dirs,
 )
-from rox_merge.fileio import BinaryFileError, new_document, read_document
+from rox_merge.fileio import BinaryFileError, new_document, read_document, write_document
+from rox_merge.ui.diff_controller import DiffController
 from rox_merge.ui.diff_view import DiffView
 
-_STATUS_LABEL = {
-    SAME: "동일",
-    DIFFERENT: "내용 다름",
-    LEFT_ONLY: "좌측만",
-    RIGHT_ONLY: "우측만",
-}
 _STATUS_COLOR = {
     SAME: QColor(120, 120, 120),
     DIFFERENT: QColor(180, 120, 0),
@@ -61,22 +57,22 @@ class FolderCompareWindow(QMainWindow):
         self._diff_only = False
 
         self._tree = QTreeWidget()
-        self._tree.setHeaderLabels(["왼쪽", "상태", "오른쪽"])
-        self._tree.setColumnWidth(0, 430)
-        self._tree.setColumnWidth(1, 90)
-        self._tree.setColumnWidth(2, 430)
+        self._tree.setHeaderLabels(["왼쪽", "오른쪽"])
+        self._tree.setColumnCount(2)
+        header = self._tree.header()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self._tree.itemDoubleClicked.connect(self._on_item_double_clicked)
 
-        self._diff = DiffView()
-        self._diff.set_read_only(True)
-        self._diff.hide()  # 파일 더블클릭 전에는 숨김
+        self._diff = DiffView()  # 편집 가능
+        self._diff.hide()        # 파일 더블클릭 전에는 숨김
+        self._ctl = DiffController(self._diff, parent=self)
 
         self._splitter = QSplitter(Qt.Orientation.Vertical)
         self._splitter.addWidget(self._tree)
         self._splitter.addWidget(self._diff)
         self.setCentralWidget(self._splitter)
 
-        # diff 보기 중 Esc → 트리 화면으로 복귀
         esc = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
         esc.activated.connect(self._hide_diff)
 
@@ -104,10 +100,20 @@ class FolderCompareWindow(QMainWindow):
         self._act(bar, "전체 펼침", "Ctrl+]", self._tree.expandAll)
         self._act(bar, "전체 접기", "Ctrl+[", self._tree.collapseAll)
         self._act(bar, "초기 상태", "Ctrl+0", self._expand_differences)
+        bar.addSeparator()
+
+        # 하단 diff 편집용
+        self._act(bar, "저장", "Ctrl+S", self._save_active)
+        self._act(bar, "실행 취소", "Ctrl+Z", self._ctl.undo_action)
+        self._act(bar, "다시 실행", ["Ctrl+Shift+Z", "Ctrl+Y"], self._ctl.redo_action)
+        self._act(bar, "이전 차이", "Ctrl+2", lambda: self._ctl.jump(-1))
+        self._act(bar, "다음 차이", "Ctrl+3", lambda: self._ctl.jump(+1))
 
     def _act(self, bar, text, shortcut, slot) -> QAction:
         action = QAction(text, self)
-        if shortcut:
+        if isinstance(shortcut, list):
+            action.setShortcuts([QKeySequence(s) for s in shortcut])
+        elif shortcut:
             action.setShortcut(QKeySequence(shortcut))
         action.triggered.connect(slot)
         bar.addAction(action)
@@ -147,14 +153,11 @@ class FolderCompareWindow(QMainWindow):
         # 좌/우 대응: 한쪽만 존재하면 반대쪽 칸은 빈칸
         left_name = node.name if node.left_exists else ""
         right_name = node.name if node.right_exists else ""
-        item = QTreeWidgetItem(
-            [left_name, _STATUS_LABEL.get(node.status, node.status), right_name]
-        )
+        item = QTreeWidgetItem([left_name, right_name])
         item.setData(0, _ROLE_NODE, node)
-        item.setTextAlignment(1, Qt.AlignmentFlag.AlignCenter)
         color = QBrush(_STATUS_COLOR.get(node.status, QColor(0, 0, 0)))
-        for col in (0, 1, 2):
-            item.setForeground(col, color)
+        item.setForeground(0, color)
+        item.setForeground(1, color)
         parent_item.addChild(item)
         for child in node.children:
             self._add_node(item, child)
@@ -194,9 +197,26 @@ class FolderCompareWindow(QMainWindow):
         right_doc = self._load(self._right_root / node.relpath) if node.right_exists else new_document()
         if right_doc is None:
             return
-        result = build_result(left_doc, right_doc)
-        self._diff.set_data(left_doc, right_doc, result)
+        self._ctl.set_documents(left_doc, right_doc)
         self._show_diff()
+
+    def _save_active(self) -> None:
+        if self._diff.isHidden():
+            return
+        self._ctl.commit_edit()
+        side = self._diff.active_side
+        doc = self._ctl.left if side == "left" else self._ctl.right
+        path = doc.path
+        if path is None:
+            path, _ = QFileDialog.getSaveFileName(self, f"{side} 저장")
+            if not path:
+                return
+        try:
+            write_document(doc, path)
+        except OSError as exc:
+            QMessageBox.critical(self, "저장 실패", str(exc))
+            return
+        self._refresh()  # 저장 후 상태 갱신
 
     def _show_diff(self) -> None:
         if self._diff.isHidden():
