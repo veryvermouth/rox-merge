@@ -207,17 +207,19 @@ class DiffView(QAbstractScrollArea):
             painter.fillRect(QRect(text_area_x, y, text_area_w, row_h), self.theme.gap_fill)
             return
 
+        text = lines[line_index]
+
         # 라인 배경색
         bg = None if kind == KIND_EQUAL else self.theme.line_bg(kind)
         if bg is not None:
             painter.fillRect(QRect(text_area_x, y, text_area_w, row_h), bg)
 
-        # intraline 강조
+        # intraline 강조 — 실제 글자 폭으로 좌표 계산(전각/한글 대응)
         intra = self.theme.intraline_bg(kind)
         if intra is not None:
             for sp in spans:
-                sx = text_x0 - hscroll + sp.start * self._char_w
-                sw = (sp.end - sp.start) * self._char_w
+                sx = text_x0 - hscroll + self._fm.horizontalAdvance(text[: sp.start])
+                sw = self._fm.horizontalAdvance(text[sp.start : sp.end])
                 painter.fillRect(QRect(int(sx), y, int(sw), row_h), intra)
 
         # 현재 차이 강조 액센트
@@ -237,7 +239,7 @@ class DiffView(QAbstractScrollArea):
         painter.save()
         painter.setClipRect(QRect(text_area_x, y, text_area_w, row_h))
         painter.setPen(self.theme.text)
-        painter.drawText(int(text_x0 - hscroll), y + self._ascent, lines[line_index])
+        painter.drawText(int(text_x0 - hscroll), y + self._ascent, text)
         painter.restore()
 
     def _current_hunk_row_set(self) -> set[int]:

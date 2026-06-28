@@ -168,6 +168,29 @@ def test_multiple_hunks():
         assert h.kind == KIND_CHANGE
 
 
+def test_replace_aligns_by_similarity_not_position():
+    # 크기가 다른 replace 블록: 비슷한 라인(x=1↔x=10)이 짝지어지고
+    # 나머지(def_unused/pass/blank)는 delete로 떨어져야 자연스럽다.
+    left = ["def unused_helper():", "    pass", "", "", "x = 1", "y = 2"]
+    right = ["x = 10", "y = 2"]
+    result = compute_diff(left, right)
+    pairs = [(r.left_index, r.right_index, r.kind) for r in result.rows]
+    assert pairs == [
+        (0, None, KIND_DELETE),
+        (1, None, KIND_DELETE),
+        (2, None, KIND_DELETE),
+        (3, None, KIND_DELETE),
+        (4, 0, KIND_CHANGE),   # x = 1  ↔  x = 10
+        (5, 1, KIND_EQUAL),    # y = 2
+    ]
+
+
+def test_equal_size_replace_still_pairs_positionally():
+    # 같은 크기 블록은 유사도가 낮아도 위치대로 change(빈 행 없이 정렬).
+    result = compute_diff(["a", "b"], ["x", "y"])
+    assert [r.kind for r in result.rows] == [KIND_CHANGE, KIND_CHANGE]
+
+
 def test_insert_only_hunk_kind():
     result = compute_diff(["a", "b"], ["a", "NEW", "b"])
     assert len(result.hunks) == 1
