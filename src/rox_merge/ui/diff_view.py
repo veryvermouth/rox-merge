@@ -50,6 +50,7 @@ class DiffView(QAbstractScrollArea):
         self._current_hunk = -1
         self._active_side = "left"
         self._base_font_pt = 11
+        self._read_only = False
 
         # 커서(활성 쪽 문서 기준): 라인/열
         self._cur_line = 0
@@ -179,6 +180,9 @@ class DiffView(QAbstractScrollArea):
         return self._base_font_pt
 
     # --------------------------------------------------------------- editing
+    def set_read_only(self, value: bool) -> None:
+        self._read_only = value
+
     def commit_edit(self) -> None:
         """진행 중인 타이핑 묶음을 마무리해 edit_committed로 내보낸다."""
         if self._txn_old is None:
@@ -233,6 +237,8 @@ class DiffView(QAbstractScrollArea):
         super().keyPressEvent(event)
 
     def _insert(self, s: str) -> None:
+        if self._read_only:
+            return
         lines = self._active_lines()
         if not lines:
             lines.append("")
@@ -245,6 +251,8 @@ class DiffView(QAbstractScrollArea):
         self._after_edit()
 
     def _backspace(self) -> None:
+        if self._read_only:
+            return
         lines = self._active_lines()
         if not lines:
             return
@@ -266,6 +274,8 @@ class DiffView(QAbstractScrollArea):
             self._after_edit()
 
     def _delete(self) -> None:
+        if self._read_only:
+            return
         lines = self._active_lines()
         if not lines:
             return
@@ -283,6 +293,8 @@ class DiffView(QAbstractScrollArea):
             self._after_edit()
 
     def _newline(self) -> None:
+        if self._read_only:
+            return
         lines = self._active_lines()
         if not lines:
             lines.append("")
