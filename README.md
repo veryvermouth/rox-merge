@@ -20,13 +20,15 @@ tests/        # pytest 단위 테스트
 ```bash
 python -m pip install -e ".[dev]"   # 의존성 + 개발 도구(pytest)
 pytest                               # 테스트 실행
+python -m rox_merge                  # GUI 실행 (선택: 좌/우 파일 경로 2개)
+python -m rox_merge left.py right.py
 ```
 
 ## 진행 상황
 
 - [x] Phase 0 — 프로젝트 뼈대, 파일 I/O(인코딩/줄바꿈/바이너리 감지), pytest 셋업
 - [x] Phase 1 — Diff 엔진(Myers 라인 diff, Alignment, 단어 단위 intraline, whitespace 분류, hunk)
-- [ ] Phase 2 — 파일 비교 GUI (M1)
+- [x] Phase 2 — 파일 비교 GUI 뷰어(side-by-side, gap/색상/intraline, 스크롤 동기화, 차이 점프, 미니맵, 글꼴 줌, 열기/저장/빈 버퍼 게이팅) · *직접 편집/병합/Undo는 Phase 3*
 - [ ] Phase 3 — 병합 + 편집
 - [ ] Phase 4 — Moved block 탐지
 - [ ] Phase 5 — 폴더 비교 (M2)
