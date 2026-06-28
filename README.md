@@ -25,7 +25,7 @@ pytest                               # 테스트 실행
 ## 진행 상황
 
 - [x] Phase 0 — 프로젝트 뼈대, 파일 I/O(인코딩/줄바꿈/바이너리 감지), pytest 셋업
-- [ ] Phase 1 — Diff 엔진
+- [x] Phase 1 — Diff 엔진(Myers 라인 diff, Alignment, 단어 단위 intraline, whitespace 분류, hunk)
 - [ ] Phase 2 — 파일 비교 GUI (M1)
 - [ ] Phase 3 — 병합 + 편집
 - [ ] Phase 4 — Moved block 탐지
