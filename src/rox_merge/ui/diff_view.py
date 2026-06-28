@@ -210,9 +210,23 @@ class DiffView(QAbstractScrollArea):
             self._txn_old = list(self._active_doc().lines)
 
     def _after_edit(self) -> None:
+        self._grow_content_width()
         self.edited.emit()
         self._ensure_cursor_visible()
         self.viewport().update()
+
+    def _grow_content_width(self) -> None:
+        """편집된 줄이 길어졌으면 콘텐츠 너비 캐시를 즉시 키운다.
+
+        debounce 재계산 전에 resize 등이 _update_scrollbars를 호출해도 가로
+        스크롤바 max가 낡은 값으로 줄어 hscroll이 0으로 클램프되는 것을 막는다.
+        """
+        lines = self._active_lines()
+        if 0 <= self._cur_line < len(lines):
+            w = self._fm.horizontalAdvance(lines[self._cur_line]) + 2 * _TEXT_PAD
+            if w > self._content_px:
+                self._content_px = w
+                self._update_scrollbars()
 
     def keyPressEvent(self, event):  # noqa: N802 (Qt)
         key = event.key()
