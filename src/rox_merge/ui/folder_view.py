@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QBrush, QColor, QKeySequence
+from PySide6.QtGui import QAction, QBrush, QColor, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QFileDialog,
     QMainWindow,
@@ -61,18 +61,24 @@ class FolderCompareWindow(QMainWindow):
         self._diff_only = False
 
         self._tree = QTreeWidget()
-        self._tree.setHeaderLabels(["이름", "상태"])
-        self._tree.setColumnWidth(0, 520)
+        self._tree.setHeaderLabels(["왼쪽", "상태", "오른쪽"])
+        self._tree.setColumnWidth(0, 430)
+        self._tree.setColumnWidth(1, 90)
+        self._tree.setColumnWidth(2, 430)
         self._tree.itemDoubleClicked.connect(self._on_item_double_clicked)
 
         self._diff = DiffView()
         self._diff.set_read_only(True)
+        self._diff.hide()  # 파일 더블클릭 전에는 숨김
 
-        splitter = QSplitter(Qt.Orientation.Vertical)
-        splitter.addWidget(self._tree)
-        splitter.addWidget(self._diff)
-        splitter.setSizes([400, 360])
-        self.setCentralWidget(splitter)
+        self._splitter = QSplitter(Qt.Orientation.Vertical)
+        self._splitter.addWidget(self._tree)
+        self._splitter.addWidget(self._diff)
+        self.setCentralWidget(self._splitter)
+
+        # diff 보기 중 Esc → 트리 화면으로 복귀
+        esc = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
+        esc.activated.connect(self._hide_diff)
 
         self._build_actions()
 
@@ -138,11 +144,17 @@ class FolderCompareWindow(QMainWindow):
     def _add_node(self, parent_item, node: CompareNode) -> QTreeWidgetItem | None:
         if self._diff_only and not node.has_difference:
             return None
-        item = QTreeWidgetItem([node.name, _STATUS_LABEL.get(node.status, node.status)])
+        # 좌/우 대응: 한쪽만 존재하면 반대쪽 칸은 빈칸
+        left_name = node.name if node.left_exists else ""
+        right_name = node.name if node.right_exists else ""
+        item = QTreeWidgetItem(
+            [left_name, _STATUS_LABEL.get(node.status, node.status), right_name]
+        )
         item.setData(0, _ROLE_NODE, node)
+        item.setTextAlignment(1, Qt.AlignmentFlag.AlignCenter)
         color = QBrush(_STATUS_COLOR.get(node.status, QColor(0, 0, 0)))
-        item.setForeground(0, color)
-        item.setForeground(1, color)
+        for col in (0, 1, 2):
+            item.setForeground(col, color)
         parent_item.addChild(item)
         for child in node.children:
             self._add_node(item, child)
@@ -184,6 +196,19 @@ class FolderCompareWindow(QMainWindow):
             return
         result = build_result(left_doc, right_doc)
         self._diff.set_data(left_doc, right_doc, result)
+        self._show_diff()
+
+    def _show_diff(self) -> None:
+        if self._diff.isHidden():
+            self._diff.show()
+            total = self._splitter.height() or 760
+            self._splitter.setSizes([total // 2, total // 2])
+
+    def _hide_diff(self) -> None:
+        """diff 보기 종료 → 트리 화면으로 복귀 (Esc)."""
+        if not self._diff.isHidden():
+            self._diff.hide()
+            self._tree.setFocus()
 
     def _load(self, path: Path):
         try:
