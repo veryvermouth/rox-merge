@@ -12,6 +12,7 @@ from rox_merge.core.diff.models import (
     DiffOptions,
     DiffResult,
     Hunk,
+    MovePair,
     Row,
     Span,
 )
@@ -23,6 +24,7 @@ __all__ = [
     "DiffResult",
     "Row",
     "Hunk",
+    "MovePair",
     "Span",
     "VALID_KINDS",
     "KIND_EQUAL",

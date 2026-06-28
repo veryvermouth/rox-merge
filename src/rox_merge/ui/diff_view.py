@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QRect, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
 from PySide6.QtWidgets import QAbstractScrollArea
 
 from rox_merge.core.diff import KIND_EQUAL, DiffResult
@@ -30,6 +30,7 @@ _BTN_BG = QColor(255, 255, 255)
 _BTN_BORDER = QColor(150, 150, 150)
 _BTN_TEXT = QColor(60, 60, 60)
 _CARET = QColor(20, 20, 20)
+_MOVE_LINE = QColor(150, 120, 210)
 
 
 class DiffView(QAbstractScrollArea):
@@ -462,9 +463,38 @@ class DiffView(QAbstractScrollArea):
                 row.right_index, self._right(), row.kind, row.right_spans, is_current,
             )
 
+        self._paint_move_connectors(painter, first, side_w)
         self._paint_caret(painter, first, hscroll)
         self._paint_buttons(painter)
         painter.end()
+
+    def _paint_move_connectors(self, painter, first, side_w) -> None:
+        moves = self._result.moves
+        if not moves:
+            return
+        left_row: dict[int, int] = {}
+        right_row: dict[int, int] = {}
+        for i, r in enumerate(self._result.rows):
+            if r.left_index is not None:
+                left_row[r.left_index] = i
+            if r.right_index is not None:
+                right_row[r.right_index] = i
+
+        visible_first = first
+        visible_last = first + self._visible_rows() + 1
+        painter.save()
+        painter.setPen(QPen(_MOVE_LINE, 1))
+        for mv in moves:
+            lr = left_row.get(mv.left_range[0])
+            rr = right_row.get(mv.right_range[0])
+            if lr is None or rr is None:
+                continue
+            if not (visible_first <= lr < visible_last or visible_first <= rr < visible_last):
+                continue
+            ly = (lr - first) * self._row_h + self._row_h // 2
+            ry = (rr - first) * self._row_h + self._row_h // 2
+            painter.drawLine(side_w, ly, side_w + _CENTER_W, ry)
+        painter.restore()
 
     def _paint_cell(self, painter, x0, side_w, gutter_w, y, hscroll,
                     line_index, lines, kind, spans, is_current):

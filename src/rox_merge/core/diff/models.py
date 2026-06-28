@@ -68,18 +68,32 @@ class Hunk:
     right_anchor: int = 0
 
 
+@dataclass(frozen=True)
+class MovePair:
+    """이동(moved) 블록 연결 정보 (PLAN §4.3, §5).
+
+    같은 내용 블록이 왼쪽 ``left_range`` 에서 삭제되고 오른쪽 ``right_range`` 에
+    추가된(=위치만 이동한) 관계. 범위는 원본 라인 인덱스 [start, end).
+    """
+
+    left_range: tuple[int, int]
+    right_range: tuple[int, int]
+
+
 @dataclass
 class DiffResult:
     """diff 전체 결과 (PLAN §5)."""
 
     rows: list[Row] = field(default_factory=list)
     hunks: list[Hunk] = field(default_factory=list)
-    moves: list = field(default_factory=list)  # Phase 4 (MovePair)
+    moves: list[MovePair] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
 class DiffOptions:
-    """비교 옵션 (PLAN §4.4). 기본은 모두 OFF(공백/대소문자 구분)."""
+    """비교 옵션 (PLAN §4.3, §4.4). 공백/대소문자는 기본 OFF, 이동 탐지는 기본 ON."""
 
     ignore_whitespace: bool = False
     ignore_case: bool = False
+    detect_moves: bool = True
+    min_move_lines: int = 3

@@ -16,10 +16,12 @@ from rox_merge.core.diff.models import (
     KIND_DELETE,
     KIND_EQUAL,
     KIND_INSERT,
+    KIND_MOVED,
     KIND_WHITESPACE,
     DiffOptions,
     DiffResult,
     Hunk,
+    MovePair,
     Row,
     Span,
 )
@@ -48,8 +50,9 @@ def compute_diff(
 
     opcodes = myers.diff(left_keys, right_keys)
     rows = _build_rows(opcodes, left, right)
+    moves = _detect_moves(rows, left, right, options)
     hunks = _build_hunks(rows)
-    return DiffResult(rows=rows, hunks=hunks, moves=[])
+    return DiffResult(rows=rows, hunks=hunks, moves=moves)
 
 
 def _line_key(line: str, options: DiffOptions) -> str:
@@ -197,6 +200,90 @@ def _merge_spans(spans: list[Span]) -> list[Span]:
         else:
             merged.append(s)
     return merged
+
+
+_MOVE_CANDIDATE_CAP = 5000  # 후보가 너무 많으면(대용량) 이동 탐지 비활성 (PLAN §4.3)
+
+
+def _detect_moves(
+    rows: list[Row], left: list[str], right: list[str], options: DiffOptions
+) -> list[MovePair]:
+    """순수 삭제/추가 라인 사이에서 위치만 이동한 블록을 찾아 moved로 표시한다.
+
+    내용(정규화 키)이 같은 **연속 블록**이 한쪽에서 삭제되고 다른 쪽에 추가되었고
+    길이가 최소 임계값 이상이면 이동으로 간주한다(PLAN §4.3). 해당 행의 kind를
+    delete/insert → moved 로 바꾸고 MovePair 목록을 반환한다.
+    """
+    if not options.detect_moves:
+        return []
+
+    dels = [
+        (r.left_index, _line_key(left[r.left_index], options))
+        for r in rows
+        if r.kind == KIND_DELETE
+    ]
+    inss = [
+        (r.right_index, _line_key(right[r.right_index], options))
+        for r in rows
+        if r.kind == KIND_INSERT
+    ]
+    if not dels or not inss or len(dels) > _MOVE_CANDIDATE_CAP or len(inss) > _MOVE_CANDIDATE_CAP:
+        return []
+
+    ins_by_key: dict[str, list[int]] = {}
+    for q, (_ri, key) in enumerate(inss):
+        ins_by_key.setdefault(key, []).append(q)
+
+    used_del = [False] * len(dels)
+    used_ins = [False] * len(inss)
+    min_k = max(1, options.min_move_lines)
+    moves: list[MovePair] = []
+
+    for p in range(len(dels)):
+        if used_del[p]:
+            continue
+        li0, key0 = dels[p]
+        best_q = -1
+        best_k = 0
+        for q in ins_by_key.get(key0, ()):
+            if used_ins[q]:
+                continue
+            k = 0
+            while (
+                p + k < len(dels)
+                and q + k < len(inss)
+                and not used_del[p + k]
+                and not used_ins[q + k]
+                and dels[p + k][1] == inss[q + k][1]
+                and dels[p + k][0] == li0 + k                 # 왼쪽에서 연속
+                and inss[q + k][0] == inss[q][0] + k           # 오른쪽에서 연속
+            ):
+                k += 1
+            if k > best_k:
+                best_k = k
+                best_q = q
+
+        if best_k >= min_k:
+            ri0 = inss[best_q][0]
+            for t in range(best_k):
+                used_del[p + t] = True
+                used_ins[best_q + t] = True
+            moves.append(MovePair((li0, li0 + best_k), (ri0, ri0 + best_k)))
+
+    if not moves:
+        return []
+
+    moved_left: set[int] = set()
+    moved_right: set[int] = set()
+    for mv in moves:
+        moved_left.update(range(*mv.left_range))
+        moved_right.update(range(*mv.right_range))
+    for r in rows:
+        if r.kind == KIND_DELETE and r.left_index in moved_left:
+            r.kind = KIND_MOVED
+        elif r.kind == KIND_INSERT and r.right_index in moved_right:
+            r.kind = KIND_MOVED
+    return moves
 
 
 def _build_hunks(rows: list[Row]) -> list[Hunk]:

@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
@@ -76,12 +78,22 @@ class MainWindow(QMainWindow):
         self._add_action(bar, "이전 차이", "Ctrl+2", lambda: self._jump(-1))
         self._add_action(bar, "다음 차이", "Ctrl+3", lambda: self._jump(+1))
         bar.addSeparator()
+        move_action = QAction("이동 탐지", self)
+        move_action.setCheckable(True)
+        move_action.setChecked(self._options.detect_moves)
+        move_action.toggled.connect(self._toggle_moves)
+        bar.addAction(move_action)
+        bar.addSeparator()
         # Ctrl++ 는 대다수 키보드에서 Ctrl+= 로 입력돼 둘 다 바인딩 (PLAN §6.2)
         self._add_action(bar, "글꼴 +", ["Ctrl++", "Ctrl+="], lambda: self._zoom(+1))
         self._add_action(bar, "글꼴 -", "Ctrl+-", lambda: self._zoom(-1))
         self._add_action(bar, "글꼴 100%", "Ctrl+0", self._zoom_reset)
         bar.addSeparator()
         self._add_action(bar, "닫기", "Ctrl+W", self.close)
+
+    def _toggle_moves(self, enabled: bool) -> None:
+        self._options = replace(self._options, detect_moves=enabled)
+        self._recompute()
 
     def _add_action(self, bar, text, shortcut, slot) -> QAction:
         action = QAction(text, self)
