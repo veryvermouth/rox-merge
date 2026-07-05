@@ -106,8 +106,8 @@ class FolderCompareWindow(QMainWindow):
         self._act(bar, "저장", "Ctrl+S", self._save_active)
         self._act(bar, "실행 취소", "Ctrl+Z", self._ctl.undo_action)
         self._act(bar, "다시 실행", ["Ctrl+Shift+Z", "Ctrl+Y"], self._ctl.redo_action)
-        self._act(bar, "이전 차이", "Ctrl+2", lambda: self._ctl.jump(-1))
-        self._act(bar, "다음 차이", "Ctrl+3", lambda: self._ctl.jump(+1))
+        self._act(bar, "이전 차이", "Ctrl+1", lambda: self._ctl.jump(-1))
+        self._act(bar, "다음 차이", "Ctrl+2", lambda: self._ctl.jump(+1))
 
     def _act(self, bar, text, shortcut, slot) -> QAction:
         action = QAction(text, self)
