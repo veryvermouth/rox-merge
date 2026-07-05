@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from rox_merge.app.compare_model import guard_note
 from rox_merge.core.diff import DiffOptions
 from rox_merge.core.document import Document
 from rox_merge.fileio import BinaryFileError, read_document, write_document
@@ -138,6 +139,8 @@ class MainWindow(QMainWindow):
     def _on_recomputed(self) -> None:
         self._overview.set_result(self._view.result)
         self._update_title()
+        note = guard_note(self._ctl.left, self._ctl.right)
+        self.statusBar().showMessage(note or "")
 
     def _update_title(self, *_args) -> None:
         def label(doc: Document) -> str:
