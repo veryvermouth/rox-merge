@@ -54,6 +54,7 @@ class DiffView(QAbstractScrollArea):
         self._sel_line = 0
         self._sel_col = 0
         self._selecting = False
+        self._preedit = ""  # IME 조합 중 문자열
         # 편집 트랜잭션(타이핑 묶음) 스냅샷
         self._txn_side: str | None = None
         self._txn_old: list[str] | None = None
@@ -65,6 +66,7 @@ class DiffView(QAbstractScrollArea):
         self._update_metrics()
 
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setAttribute(Qt.WidgetAttribute.WA_InputMethodEnabled, True)  # 한글 등 IME
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.viewport().setMouseTracking(True)
 
@@ -280,6 +282,37 @@ class DiffView(QAbstractScrollArea):
             self._insert(text)
             return
         super().keyPressEvent(event)
+
+    def inputMethodEvent(self, event):  # noqa: N802 (Qt) — 한글 등 IME 입력
+        if self._read_only:
+            event.ignore()
+            return
+        commit = event.commitString()
+        self._preedit = event.preeditString()
+        if commit:
+            self._insert(commit)  # _insert가 재계산/repaint 트리거
+        else:
+            self.viewport().update()
+        event.accept()
+
+    def inputMethodQuery(self, query):  # noqa: N802 (Qt) — IME 후보창 위치용
+        if query == Qt.InputMethodQuery.ImCursorRectangle:
+            return self._caret_rect()
+        return super().inputMethodQuery(query)
+
+    def _caret_rect(self) -> QRect:
+        row = self._cursor_row()
+        first = self.verticalScrollBar().value()
+        lines = self._active_lines()
+        if row is None or self._cur_line >= len(lines):
+            return QRect(0, 0, 1, self._row_h)
+        text = lines[self._cur_line]
+        col = min(self._cur_col, len(text))
+        x0 = self._text_x0(self._active_side)
+        hscroll = self.horizontalScrollBar().value()
+        cx = int(x0 - hscroll + self._fm.horizontalAdvance(text[:col]))
+        y = (row - first) * self._row_h
+        return QRect(cx, y, 2, self._row_h)
 
     def _insert(self, s: str) -> None:
         if self._read_only:
@@ -727,7 +760,13 @@ class DiffView(QAbstractScrollArea):
         text_area_w = side_w - gutter_w
 
         if line_index is None or line_index >= len(lines):
-            painter.fillRect(QRect(text_area_x, y, text_area_w, row_h), self.theme.gap_fill)
+            # gap(공백줄): 반대편 변경 종류 색으로 강조(plain/equal은 회색)
+            bg = None if kind == KIND_EQUAL else self.theme.line_bg(kind)
+            painter.fillRect(
+                QRect(text_area_x, y, text_area_w, row_h), bg or self.theme.gap_fill
+            )
+            if is_current:
+                painter.fillRect(QRect(x0, y, 3, row_h), self.theme.current_accent)
             return
 
         text = lines[line_index]
@@ -773,6 +812,13 @@ class DiffView(QAbstractScrollArea):
         x0 = self._text_x0(self._active_side)
         cx = int(x0 - hscroll + self._fm.horizontalAdvance(text[:col]))
         y = (row - first) * self._row_h
+        if self._preedit:  # IME 조합 중 문자열을 커서 위치에 밑줄로 표시
+            painter.setPen(self.theme.text)
+            painter.drawText(cx, y + self._ascent, self._preedit)
+            pw = self._fm.horizontalAdvance(self._preedit)
+            painter.setPen(self.theme.caret)
+            painter.drawLine(cx, y + self._row_h - 1, cx + pw, y + self._row_h - 1)
+            cx += pw
         painter.fillRect(QRect(cx, y, 2, self._row_h), self.theme.caret)
 
     def _paint_buttons(self, painter) -> None:

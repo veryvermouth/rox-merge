@@ -141,3 +141,32 @@ def test_multiline_paste(view):
     _cursor(view, 0, 1)
     view._insert_text("1\n2")  # 개행 포함 삽입
     assert right.lines == ["a1", "2b"]
+
+
+def test_ime_commit_inserts_text(view):
+    """한글 등 IME 입력: inputMethodEvent의 commitString이 삽입돼야 한다."""
+    from PySide6.QtGui import QInputMethodEvent
+
+    left, right = _load(view, ["x"], ["abc"])
+    _cursor(view, 0, 3)
+    # 조합 중(preedit)엔 문서 변화 없음
+    view.inputMethodEvent(QInputMethodEvent("ㅎ", []))
+    assert right.lines == ["abc"]
+    assert view._preedit == "ㅎ"
+    # 커밋되면 삽입
+    ev = QInputMethodEvent("", [])
+    ev.setCommitString("한글")
+    view.inputMethodEvent(ev)
+    assert right.lines == ["abc한글"]
+
+
+def test_ime_ignored_when_read_only(view):
+    from PySide6.QtGui import QInputMethodEvent
+
+    left, right = _load(view, ["x"], ["abc"])
+    view.set_read_only(True)
+    _cursor(view, 0, 3)
+    ev = QInputMethodEvent("", [])
+    ev.setCommitString("한글")
+    view.inputMethodEvent(ev)
+    assert right.lines == ["abc"]
