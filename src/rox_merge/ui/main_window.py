@@ -10,6 +10,7 @@ from dataclasses import replace
 
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
+    QApplication,
     QFileDialog,
     QHBoxLayout,
     QMainWindow,
@@ -24,6 +25,7 @@ from rox_merge.fileio import BinaryFileError, read_document, write_document
 from rox_merge.ui.diff_controller import DiffController
 from rox_merge.ui.diff_view import DiffView
 from rox_merge.ui.overview_bar import OverviewBar
+from rox_merge.ui.theme import Theme, dark_palette
 
 
 class MainWindow(QMainWindow):
@@ -32,6 +34,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("rox-merge")
         self.resize(1100, 720)
 
+        self._light_palette = QApplication.instance().palette()
         self._view = DiffView()
         self._overview = OverviewBar()
         self._ctl = DiffController(self._view, DiffOptions(), self)
@@ -74,8 +77,17 @@ class MainWindow(QMainWindow):
         self._add_action(bar, "글꼴 +", ["Ctrl++", "Ctrl+="], lambda: self._ctl.zoom(+1))
         self._add_action(bar, "글꼴 -", "Ctrl+-", lambda: self._ctl.zoom(-1))
         self._add_action(bar, "글꼴 100%", "Ctrl+0", self._ctl.zoom_reset)
+        self._add_toggle(bar, "다크 테마", False, self._toggle_dark)
         bar.addSeparator()
         self._add_action(bar, "닫기", "Ctrl+W", self.close)
+
+    def _toggle_dark(self, enabled: bool) -> None:
+        theme = Theme(dark=enabled)
+        self._view.set_theme(theme)
+        self._overview.set_theme(theme)
+        app = QApplication.instance()
+        if app is not None:
+            app.setPalette(dark_palette() if enabled else self._light_palette)
 
     def _toggle_moves(self, enabled: bool) -> None:
         self._ctl.set_options(replace(self._ctl.options, detect_moves=enabled))

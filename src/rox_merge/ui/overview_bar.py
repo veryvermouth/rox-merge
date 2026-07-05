@@ -30,6 +30,10 @@ class OverviewBar(QWidget):
         self._result = result
         self.update()
 
+    def set_theme(self, theme: Theme) -> None:
+        self.theme = theme
+        self.update()
+
     def _total_rows(self) -> int:
         return max(1, len(self._result.rows))
 

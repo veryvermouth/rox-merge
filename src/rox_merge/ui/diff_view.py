@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QRect, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
+from PySide6.QtGui import QFont, QFontMetrics, QPainter, QPen
 from PySide6.QtWidgets import QAbstractScrollArea
 
 from rox_merge.core.diff import KIND_EQUAL, DiffResult
@@ -25,12 +25,6 @@ _CENTER_W = 18
 _BTN_W = 18
 _MIN_FONT_PT = 6
 _MAX_FONT_PT = 40
-
-_BTN_BG = QColor(255, 255, 255)
-_BTN_BORDER = QColor(150, 150, 150)
-_BTN_TEXT = QColor(60, 60, 60)
-_CARET = QColor(20, 20, 20)
-_MOVE_LINE = QColor(150, 120, 210)
 
 
 class DiffView(QAbstractScrollArea):
@@ -80,6 +74,10 @@ class DiffView(QAbstractScrollArea):
         self._clamp_cursor()
         self._recompute_content_width()
         self._update_scrollbars()
+        self.viewport().update()
+
+    def set_theme(self, theme: Theme) -> None:
+        self.theme = theme
         self.viewport().update()
 
     @property
@@ -540,7 +538,7 @@ class DiffView(QAbstractScrollArea):
         visible_first = first
         visible_last = first + self._visible_rows() + 1
         painter.save()
-        painter.setPen(QPen(_MOVE_LINE, 1))
+        painter.setPen(QPen(self.theme.move_line, 1))
         for mv in moves:
             lr = left_row.get(mv.left_range[0])
             rr = right_row.get(mv.right_range[0])
@@ -607,15 +605,15 @@ class DiffView(QAbstractScrollArea):
         x0 = self._text_x0(self._active_side)
         cx = int(x0 - hscroll + self._fm.horizontalAdvance(text[:col]))
         y = (row - first) * self._row_h
-        painter.fillRect(QRect(cx, y, 2, self._row_h), _CARET)
+        painter.fillRect(QRect(cx, y, 2, self._row_h), self.theme.caret)
 
     def _paint_buttons(self, painter) -> None:
         painter.save()
         for rect, _hid, direction in self._button_rects():
-            painter.fillRect(rect, _BTN_BG)
-            painter.setPen(_BTN_BORDER)
+            painter.fillRect(rect, self.theme.btn_bg)
+            painter.setPen(self.theme.btn_border)
             painter.drawRect(rect.adjusted(0, 0, -1, -1))
-            painter.setPen(_BTN_TEXT)
+            painter.setPen(self.theme.btn_text)
             arrow = "→" if direction == "l2r" else "←"
             painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, arrow)
         painter.restore()
