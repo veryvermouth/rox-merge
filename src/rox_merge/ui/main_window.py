@@ -64,11 +64,10 @@ class MainWindow(QMainWindow):
         self._add_action(bar, "이전 차이", "Ctrl+1", lambda: self._ctl.jump(-1))
         self._add_action(bar, "다음 차이", "Ctrl+2", lambda: self._ctl.jump(+1))
         bar.addSeparator()
-        move_action = QAction("이동 탐지", self)
-        move_action.setCheckable(True)
-        move_action.setChecked(self._ctl.options.detect_moves)
-        move_action.toggled.connect(self._toggle_moves)
-        bar.addAction(move_action)
+        opts = self._ctl.options
+        self._add_toggle(bar, "이동 탐지", opts.detect_moves, self._toggle_moves)
+        self._add_toggle(bar, "공백 무시", opts.ignore_whitespace, self._toggle_whitespace)
+        self._add_toggle(bar, "대소문자 무시", opts.ignore_case, self._toggle_case)
         bar.addSeparator()
         # Ctrl++ 는 대다수 키보드에서 Ctrl+= 로 입력돼 둘 다 바인딩 (PLAN §6.2)
         self._add_action(bar, "글꼴 +", ["Ctrl++", "Ctrl+="], lambda: self._ctl.zoom(+1))
@@ -79,6 +78,20 @@ class MainWindow(QMainWindow):
 
     def _toggle_moves(self, enabled: bool) -> None:
         self._ctl.set_options(replace(self._ctl.options, detect_moves=enabled))
+
+    def _toggle_whitespace(self, enabled: bool) -> None:
+        self._ctl.set_options(replace(self._ctl.options, ignore_whitespace=enabled))
+
+    def _toggle_case(self, enabled: bool) -> None:
+        self._ctl.set_options(replace(self._ctl.options, ignore_case=enabled))
+
+    def _add_toggle(self, bar, text, checked, slot) -> QAction:
+        action = QAction(text, self)
+        action.setCheckable(True)
+        action.setChecked(checked)
+        action.toggled.connect(slot)
+        bar.addAction(action)
+        return action
 
     def _add_action(self, bar, text, shortcut, slot) -> QAction:
         action = QAction(text, self)
