@@ -36,6 +36,7 @@ class Theme:
             self.btn_text = QColor(210, 210, 210)
             self.caret = QColor(230, 230, 230)
             self.move_line = QColor(160, 130, 220)
+            self.selection = QColor(70, 120, 180, 110)
             self._line_bg = {
                 KIND_INSERT: QColor(28, 58, 40),
                 KIND_DELETE: QColor(70, 35, 38),
@@ -61,6 +62,7 @@ class Theme:
             self.btn_text = QColor(60, 60, 60)
             self.caret = QColor(20, 20, 20)
             self.move_line = QColor(150, 120, 210)
+            self.selection = QColor(51, 153, 255, 80)
             self._line_bg = {
                 KIND_INSERT: QColor(218, 251, 225),      # 초록 계열
                 KIND_DELETE: QColor(255, 228, 228),      # 빨강 계열

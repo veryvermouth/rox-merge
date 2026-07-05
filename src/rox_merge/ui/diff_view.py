@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QRect, Qt, Signal
-from PySide6.QtGui import QFont, QFontMetrics, QPainter, QPen
+from PySide6.QtGui import QFont, QFontMetrics, QGuiApplication, QPainter, QPen
 from PySide6.QtWidgets import QAbstractScrollArea
 
 from rox_merge.core.diff import KIND_EQUAL, DiffResult
@@ -50,6 +50,10 @@ class DiffView(QAbstractScrollArea):
         # 커서(활성 쪽 문서 기준): 라인/열
         self._cur_line = 0
         self._cur_col = 0
+        # 선택 앵커(커서와 다르면 선택 영역). 드래그 중 여부.
+        self._sel_line = 0
+        self._sel_col = 0
+        self._selecting = False
         # 편집 트랜잭션(타이핑 묶음) 스냅샷
         self._txn_side: str | None = None
         self._txn_old: list[str] | None = None
@@ -208,6 +212,7 @@ class DiffView(QAbstractScrollArea):
             self._txn_old = list(self._active_doc().lines)
 
     def _after_edit(self) -> None:
+        self._collapse_selection()
         self._grow_content_width()
         self.edited.emit()
         self._ensure_cursor_visible()
@@ -229,6 +234,23 @@ class DiffView(QAbstractScrollArea):
     def keyPressEvent(self, event):  # noqa: N802 (Qt)
         key = event.key()
         mods = event.modifiers()
+        ctrl = bool(mods & Qt.KeyboardModifier.ControlModifier)
+        shift = bool(mods & Qt.KeyboardModifier.ShiftModifier)
+
+        # 선택/클립보드 (QAction으로 등록 안 된 조합만 여기서 처리)
+        if ctrl and key == Qt.Key.Key_A:
+            self._select_all()
+            return
+        if ctrl and key == Qt.Key.Key_C:
+            self._copy()
+            return
+        if ctrl and key == Qt.Key.Key_X:
+            self._cut()
+            return
+        if ctrl and key == Qt.Key.Key_V:
+            self._paste()
+            return
+
         nav = {
             Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up,
             Qt.Key.Key_Down, Qt.Key.Key_Home, Qt.Key.Key_End,
@@ -236,6 +258,8 @@ class DiffView(QAbstractScrollArea):
         if key in nav:
             self.commit_edit()
             self._move(key)
+            if not shift:
+                self._collapse_selection()  # Shift 없으면 선택 해제
             self._ensure_cursor_visible()
             self.viewport().update()
             return
@@ -250,9 +274,9 @@ class DiffView(QAbstractScrollArea):
             return
 
         text = event.text()
-        ctrl_alt = mods & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.AltModifier
-                           | Qt.KeyboardModifier.MetaModifier)
-        if text and text.isprintable() and not ctrl_alt:
+        other_mod = mods & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.AltModifier
+                            | Qt.KeyboardModifier.MetaModifier)
+        if text and text.isprintable() and not other_mod:
             self._insert(text)
             return
         super().keyPressEvent(event)
@@ -260,22 +284,44 @@ class DiffView(QAbstractScrollArea):
     def _insert(self, s: str) -> None:
         if self._read_only:
             return
+        self._begin_txn()
+        if self._has_selection():
+            self._remove_selection()
+        self._insert_text(s)
+        self._after_edit()
+
+    def _insert_text(self, s: str) -> None:
+        """커서 위치에 문자열 삽입(개행 포함 가능). txn/after_edit은 호출자 책임."""
         lines = self._active_lines()
         if not lines:
             lines.append("")
         self._cur_line = min(self._cur_line, len(lines) - 1)
-        self._begin_txn()
         line = lines[self._cur_line]
         col = min(self._cur_col, len(line))
-        lines[self._cur_line] = line[:col] + s + line[col:]
-        self._cur_col = col + len(s)
-        self._after_edit()
+        parts = s.split("\n")
+        if len(parts) == 1:
+            lines[self._cur_line] = line[:col] + parts[0] + line[col:]
+            self._cur_col = col + len(parts[0])
+        else:
+            tail = line[col:]
+            lines[self._cur_line] = line[:col] + parts[0]
+            new = parts[1:]
+            new[-1] = new[-1] + tail
+            for k, p in enumerate(new):
+                lines.insert(self._cur_line + 1 + k, p)
+            self._cur_line += len(parts) - 1
+            self._cur_col = len(parts[-1])
 
     def _backspace(self) -> None:
         if self._read_only:
             return
         lines = self._active_lines()
         if not lines:
+            return
+        if self._has_selection():
+            self._begin_txn()
+            self._remove_selection()
+            self._after_edit()
             return
         self._cur_line = min(self._cur_line, len(lines) - 1)
         line = lines[self._cur_line]
@@ -300,6 +346,11 @@ class DiffView(QAbstractScrollArea):
         lines = self._active_lines()
         if not lines:
             return
+        if self._has_selection():
+            self._begin_txn()
+            self._remove_selection()
+            self._after_edit()
+            return
         self._cur_line = min(self._cur_line, len(lines) - 1)
         line = lines[self._cur_line]
         col = min(self._cur_col, len(line))
@@ -316,17 +367,80 @@ class DiffView(QAbstractScrollArea):
     def _newline(self) -> None:
         if self._read_only:
             return
+        self._begin_txn()
+        if self._has_selection():
+            self._remove_selection()
+        self._insert_text("\n")
+        self._after_edit()
+
+    # --------------------------------------------------------------- selection
+    def _has_selection(self) -> bool:
+        return (self._sel_line, self._sel_col) != (self._cur_line, self._cur_col)
+
+    def _collapse_selection(self) -> None:
+        self._sel_line, self._sel_col = self._cur_line, self._cur_col
+
+    def _selection_range(self) -> tuple[tuple[int, int], tuple[int, int]]:
+        a = (self._sel_line, self._sel_col)
+        b = (self._cur_line, self._cur_col)
+        return (a, b) if a <= b else (b, a)
+
+    def _select_all(self) -> None:
         lines = self._active_lines()
         if not lines:
-            lines.append("")
-        self._cur_line = min(self._cur_line, len(lines) - 1)
+            return
+        self._sel_line, self._sel_col = 0, 0
+        self._cur_line = len(lines) - 1
+        self._cur_col = len(lines[-1])
+        self._ensure_cursor_visible()
+        self.viewport().update()
+
+    def _selected_text(self) -> str:
+        if not self._has_selection():
+            return ""
+        (sl, sc), (el, ec) = self._selection_range()
+        lines = self._active_lines()
+        if sl == el:
+            return lines[sl][sc:ec]
+        parts = [lines[sl][sc:]] + lines[sl + 1 : el] + [lines[el][:ec]]
+        return "\n".join(parts)
+
+    def _remove_selection(self) -> None:
+        """선택 영역을 지우고 커서를 시작점으로. txn은 호출자가 시작."""
+        (sl, sc), (el, ec) = self._selection_range()
+        lines = self._active_lines()
+        if sl == el:
+            lines[sl] = lines[sl][:sc] + lines[sl][ec:]
+        else:
+            lines[sl] = lines[sl][:sc] + lines[el][ec:]
+            del lines[sl + 1 : el + 1]
+        self._cur_line, self._cur_col = sl, sc
+        self._collapse_selection()
+
+    def _copy(self) -> None:
+        text = self._selected_text()
+        if text:
+            QGuiApplication.clipboard().setText(text)
+
+    def _cut(self) -> None:
+        if self._read_only or not self._has_selection():
+            return
+        QGuiApplication.clipboard().setText(self._selected_text())
         self._begin_txn()
-        line = lines[self._cur_line]
-        col = min(self._cur_col, len(line))
-        lines[self._cur_line] = line[:col]
-        lines.insert(self._cur_line + 1, line[col:])
-        self._cur_line += 1
-        self._cur_col = 0
+        self._remove_selection()
+        self._after_edit()
+
+    def _paste(self) -> None:
+        if self._read_only:
+            return
+        text = QGuiApplication.clipboard().text()
+        if not text:
+            return
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+        self._begin_txn()
+        if self._has_selection():
+            self._remove_selection()
+        self._insert_text(text)
         self._after_edit()
 
     def _move(self, key) -> None:
@@ -365,9 +479,12 @@ class DiffView(QAbstractScrollArea):
         lines = self._active_lines()
         if not lines:
             self._cur_line = self._cur_col = 0
+            self._sel_line = self._sel_col = 0
             return
         self._cur_line = min(self._cur_line, len(lines) - 1)
         self._cur_col = min(self._cur_col, len(lines[self._cur_line]))
+        self._sel_line = min(self._sel_line, len(lines) - 1)
+        self._sel_col = min(self._sel_col, len(lines[self._sel_line]))
 
     def _ensure_cursor_visible(self) -> None:
         row = self._cursor_row()
@@ -425,11 +542,26 @@ class DiffView(QAbstractScrollArea):
 
         self.commit_edit()
         side = "left" if pos.x() < self._side_w() + _CENTER_W / 2 else "right"
-        if side != self._active_side:
+        side_changed = side != self._active_side
+        if side_changed:
             self._active_side = side
             self.active_side_changed.emit(side)
+        extend = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier) and not side_changed
         self._place_cursor_at(pos.x(), pos.y(), side)
+        if not extend:
+            self._collapse_selection()
+        self._selecting = True
         self.viewport().update()
+
+    def mouseMoveEvent(self, event):  # noqa: N802 (Qt)
+        if self._selecting and (event.buttons() & Qt.MouseButton.LeftButton):
+            pos = event.position()
+            self._place_cursor_at(pos.x(), pos.y(), self._active_side)
+            self._ensure_cursor_visible()
+            self.viewport().update()
+
+    def mouseReleaseEvent(self, event):  # noqa: N802 (Qt)
+        self._selecting = False
 
     def _place_cursor_at(self, x: float, y: float, side: str) -> None:
         first = self.verticalScrollBar().value()
@@ -518,10 +650,46 @@ class DiffView(QAbstractScrollArea):
                 row.right_index, self._right(), row.kind, row.right_spans, is_current,
             )
 
+        self._paint_selection(painter, first, hscroll)
         self._paint_move_connectors(painter, first, side_w)
         self._paint_caret(painter, first, hscroll)
         self._paint_buttons(painter)
         painter.end()
+
+    def _paint_selection(self, painter, first, hscroll) -> None:
+        if not self._has_selection():
+            return
+        (sl, sc), (el, ec) = self._selection_range()
+        lines = self._active_lines()
+        rows = self._result.rows
+        last = first + self._visible_rows() + 1
+        x0 = self._text_x0(self._active_side)
+        side_w = self._side_w()
+        gutter_w = self._gutter_w()
+        if self._active_side == "left":
+            area_x = gutter_w
+        else:
+            area_x = side_w + _CENTER_W + gutter_w
+        area_w = side_w - gutter_w
+
+        painter.save()
+        painter.setClipRect(QRect(area_x, 0, area_w, self.viewport().height()))
+        for vi in range(first, min(len(rows), last)):
+            row = rows[vi]
+            idx = row.left_index if self._active_side == "left" else row.right_index
+            if idx is None or not (sl <= idx <= el):
+                continue
+            text = lines[idx] if idx < len(lines) else ""
+            cs = sc if idx == sl else 0
+            ce = ec if idx == el else len(text)
+            xs = x0 - hscroll + self._fm.horizontalAdvance(text[:cs])
+            xe = x0 - hscroll + self._fm.horizontalAdvance(text[:ce])
+            w = xe - xs
+            if idx < el:  # 줄 전체 + 개행이 선택된 경우 끝을 살짝 연장
+                w += self._char_w // 2
+            y = (vi - first) * self._row_h
+            painter.fillRect(QRect(int(xs), y, int(max(1, w)), self._row_h), self.theme.selection)
+        painter.restore()
 
     def _paint_move_connectors(self, painter, first, side_w) -> None:
         moves = self._result.moves
