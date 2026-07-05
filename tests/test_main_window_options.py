@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from rox_merge.core.diff import KIND_EQUAL, KIND_WHITESPACE  # noqa: E402
 from rox_merge.core.document import Document  # noqa: E402
-from rox_merge.ui.main_window import MainWindow  # noqa: E402
+from rox_merge.ui.file_pane import FileComparePane  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -22,7 +22,7 @@ def app():
 
 @pytest.fixture
 def win(app):
-    w = MainWindow()
+    w = FileComparePane()
     w._set_doc("left", Document(path="L", lines=["    return 1"]))
     w._set_doc("right", Document(path="R", lines=["\treturn 1"]))
     w._recompute()
@@ -46,7 +46,7 @@ def test_toggle_ignore_whitespace_promotes_to_equal(win):
 
 
 def test_toggle_ignore_case(app):
-    w = MainWindow()
+    w = FileComparePane()
     w._set_doc("left", Document(path="L", lines=["Hello"]))
     w._set_doc("right", Document(path="R", lines=["hello"]))
     w._recompute()

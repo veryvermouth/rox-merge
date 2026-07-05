@@ -1,28 +1,27 @@
-"""폴더 비교 윈도우 (PLAN §6.4).
+"""폴더 비교 패널 (PLAN §6.4) — 탭에 들어가는 QWidget.
 
-위: 좌/우 대응 폴더 트리(왼쪽 | 오른쪽, 가운데 기준 동일 너비), 상태는 색으로 표시.
-파일 더블클릭 시 여는 방식은 툴바 토글로 두 가지:
-- **분할 모드(기본)**: 트리 아래 diff 창에 표시(하단만 교체). Esc로 트리 복귀.
-- **새 탭 모드**: 더블클릭할 때마다 새 비교 탭 생성. Esc로 폴더 탭 복귀.
-diff 뷰는 편집 가능. 필터/펼치기·접기(Ctrl+]/[/0)/비교 정밀도 토글 지원.
+위: 좌/우 대응 트리, 아래(분할 모드) 또는 내부 탭(새 탭 모드)에 파일 diff.
+자체 툴바를 품는다. 파일↔폴더 세션 추가는 상위(AppWindow)가 담당.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QAction, QBrush, QColor, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QFileDialog,
     QHeaderView,
-    QMainWindow,
     QMessageBox,
     QSplitter,
     QTabBar,
     QTabWidget,
+    QToolBar,
     QTreeWidget,
     QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 
 from rox_merge.core.folder_compare import (
@@ -48,19 +47,17 @@ _STATUS_COLOR = {
 _ROLE_NODE = Qt.ItemDataRole.UserRole
 
 
-class FolderCompareWindow(QMainWindow):
+class FolderComparePane(QWidget):
+    title_changed = Signal(str)
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("rox-merge — 폴더 비교")
-        self.resize(1100, 760)
-
         self._left_root: Path | None = None
         self._right_root: Path | None = None
         self._mode = MODE_FAST
         self._diff_only = False
         self._tab_mode = False
         self._tab_controllers: dict[object, DiffController] = {}  # DiffView -> DiffController
-        self._children: list = []  # 이 창에서 연 다른 비교 창 참조 유지
 
         self._tree = QTreeWidget()
         self._tree.setHeaderLabels(["왼쪽", "오른쪽"])
@@ -70,7 +67,6 @@ class FolderCompareWindow(QMainWindow):
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self._tree.itemDoubleClicked.connect(self._on_item_double_clicked)
 
-        # 폴더 탭(탭 0): 트리 + 분할 모드용 하단 diff
         self._diff = DiffView()
         self._diff.hide()
         self._ctl = DiffController(self._diff, parent=self)
@@ -83,38 +79,28 @@ class FolderCompareWindow(QMainWindow):
         self._tabs.tabCloseRequested.connect(self._close_tab)
         self._tabs.addTab(self._folder_page, "폴더")
         self._tabs.tabBar().setTabButton(0, QTabBar.ButtonPosition.RightSide, None)
-        self.setCentralWidget(self._tabs)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(self._build_toolbar())
+        layout.addWidget(self._tabs, 1)
 
         esc = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
+        esc.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         esc.activated.connect(self._on_escape)
 
-        self._build_actions()
-
-    # ------------------------------------------------------------- actions
-    def _build_actions(self) -> None:
-        bar = self.addToolBar("main")
-        self._act(bar, "파일 비교", "Ctrl+N", self._open_file_compare)
-        self._act(bar, "새 폴더 비교", "Ctrl+D", self._open_folder_compare)
-        bar.addSeparator()
+    # ------------------------------------------------------------- toolbar
+    def _build_toolbar(self) -> QToolBar:
+        bar = QToolBar()
         self._act(bar, "왼쪽 폴더", None, lambda: self._pick_root("left"))
         self._act(bar, "오른쪽 폴더", None, lambda: self._pick_root("right"))
         self._act(bar, "새로고침", "F5", self._refresh)
         bar.addSeparator()
 
-        self._filter_act = QAction("다른 항목만", self)
-        self._filter_act.setCheckable(True)
-        self._filter_act.toggled.connect(self._toggle_filter)
-        bar.addAction(self._filter_act)
-
-        self._mode_act = QAction("정확 비교(해시)", self)
-        self._mode_act.setCheckable(True)
-        self._mode_act.toggled.connect(self._toggle_mode)
-        bar.addAction(self._mode_act)
-
-        self._tabmode_act = QAction("새 탭 모드", self)
-        self._tabmode_act.setCheckable(True)
-        self._tabmode_act.toggled.connect(self._toggle_tab_mode)
-        bar.addAction(self._tabmode_act)
+        self._toggle(bar, "다른 항목만", False, self._toggle_filter)
+        self._toggle(bar, "정확 비교(해시)", False, self._toggle_mode)
+        self._toggle(bar, "새 탭 모드", False, self._toggle_tab_mode)
         bar.addSeparator()
 
         self._act(bar, "전체 펼침", "Ctrl+]", self._tree.expandAll)
@@ -122,13 +108,13 @@ class FolderCompareWindow(QMainWindow):
         self._act(bar, "초기 상태", "Ctrl+0", self._expand_differences)
         bar.addSeparator()
 
-        # 하단/탭 diff 편집용 (현재 활성 diff 대상)
         self._act(bar, "저장", "Ctrl+S", self._save_active)
         self._act(bar, "실행 취소", "Ctrl+Z", lambda: self._active_controller().undo_action())
         self._act(bar, "다시 실행", ["Ctrl+Shift+Z", "Ctrl+Y"],
                   lambda: self._active_controller().redo_action())
         self._act(bar, "이전 차이", "Ctrl+1", lambda: self._active_controller().jump(-1))
         self._act(bar, "다음 차이", "Ctrl+2", lambda: self._active_controller().jump(+1))
+        return bar
 
     def _act(self, bar, text, shortcut, slot) -> QAction:
         action = QAction(text, self)
@@ -136,7 +122,17 @@ class FolderCompareWindow(QMainWindow):
             action.setShortcuts([QKeySequence(s) for s in shortcut])
         elif shortcut:
             action.setShortcut(QKeySequence(shortcut))
+        action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         action.triggered.connect(slot)
+        bar.addAction(action)
+        self.addAction(action)
+        return action
+
+    def _toggle(self, bar, text, checked, slot) -> QAction:
+        action = QAction(text, self)
+        action.setCheckable(True)
+        action.setChecked(checked)
+        action.toggled.connect(slot)
         bar.addAction(action)
         return action
 
@@ -147,7 +143,6 @@ class FolderCompareWindow(QMainWindow):
         self._refresh()
 
     def prompt_roots(self) -> None:
-        """좌/우 폴더를 순서대로 선택받아 비교한다."""
         left = QFileDialog.getExistingDirectory(self, "왼쪽 폴더 선택")
         if not left:
             return
@@ -156,19 +151,10 @@ class FolderCompareWindow(QMainWindow):
             return
         self.set_roots(left, right)
 
-    # -------------------------------------------------------- 다른 모드 열기
-    def _open_file_compare(self) -> None:
-        from rox_merge.ui.main_window import MainWindow
-
-        win = MainWindow()
-        self._children.append(win)
-        win.show()
-
-    def _open_folder_compare(self) -> None:
-        win = FolderCompareWindow()
-        self._children.append(win)
-        win.show()
-        win.prompt_roots()
+    def title(self) -> str:
+        if self._left_root and self._right_root:
+            return f"폴더: {self._left_root.name} ⇄ {self._right_root.name}"
+        return "폴더 비교"
 
     # --------------------------------------------------------------- slots
     def _pick_root(self, side: str) -> None:
@@ -190,7 +176,7 @@ class FolderCompareWindow(QMainWindow):
         for child in root.children:
             self._add_node(self._tree.invisibleRootItem(), child)
         self._expand_differences()
-        self.setWindowTitle(f"rox-merge — 폴더 비교: {self._left_root}  ⇄  {self._right_root}")
+        self.title_changed.emit(self.title())
 
     def _add_node(self, parent_item, node: CompareNode) -> QTreeWidgetItem | None:
         if self._diff_only and not node.has_difference:
@@ -237,7 +223,6 @@ class FolderCompareWindow(QMainWindow):
         self._open_file_pair(node)
 
     def _open_file_pair(self, node: CompareNode) -> None:
-        # 분할 모드에서 하단이 dirty면 교체 전 2지선다 경고 (PLAN §6.4)
         if not self._tab_mode and not self._diff.isHidden():
             self._ctl.commit_edit()
             if (self._ctl.left.dirty or self._ctl.right.dirty) and not self._confirm_discard():
@@ -278,7 +263,6 @@ class FolderCompareWindow(QMainWindow):
         view.deleteLater()
 
     def _active_controller(self) -> DiffController:
-        """현재 탭의 diff 컨트롤러(폴더 탭이면 하단 diff)."""
         widget = self._tabs.currentWidget()
         return self._tab_controllers.get(widget, self._ctl)
 
@@ -302,7 +286,6 @@ class FolderCompareWindow(QMainWindow):
         self._refresh()
 
     def _on_escape(self) -> None:
-        """Esc: 새 탭 모드면 폴더 탭으로, 분할 모드면 하단 diff 숨김."""
         if self._tabs.currentIndex() != 0:
             self._tabs.setCurrentIndex(0)
         else:

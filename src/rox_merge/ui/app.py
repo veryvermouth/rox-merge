@@ -7,34 +7,37 @@ import sys
 
 from PySide6.QtWidgets import QApplication
 
-from rox_merge.ui.folder_view import FolderCompareWindow
-from rox_merge.ui.main_window import MainWindow
+from rox_merge.ui.app_window import AppWindow
 
 
 def run(argv: list[str] | None = None) -> int:
     """GUI를 실행한다.
 
-    인자가 폴더 2개면 폴더 비교 창을, 아니면 파일 비교 창을 띄운다.
-    파일 비교 창에는 선택적으로 좌/우 파일 경로 2개를 줄 수 있다.
+    인자가 폴더 2개면 폴더 비교 탭을, 아니면 파일 비교 탭을 연다.
+    파일 비교 탭에는 선택적으로 좌/우 파일 경로 2개를 줄 수 있다.
+    실행 후에는 툴바로 파일/폴더 비교 탭을 더 추가할 수 있다.
     """
     argv = list(sys.argv if argv is None else argv)
     app = QApplication(argv)
-    args = argv[1:3]
+    window = AppWindow()
 
+    args = argv[1:3]
     if len(args) == 2 and all(os.path.isdir(a) for a in args):
-        window = FolderCompareWindow()
-        window.set_roots(args[0], args[1])
+        window.add_folder_tab(args[0], args[1])
     else:
-        window = MainWindow()
+        left = right = None
         if args:
             from rox_merge.fileio import BinaryFileError, read_document
 
-            for side, path in zip(["left", "right"], args):
+            docs = []
+            for path in args:
                 try:
-                    window._set_doc(side, read_document(path))  # noqa: SLF001
+                    docs.append(read_document(path))
                 except (OSError, BinaryFileError, UnicodeDecodeError):
-                    pass
-            window._recompute()  # noqa: SLF001
+                    docs.append(None)
+            left = docs[0] if len(docs) > 0 else None
+            right = docs[1] if len(docs) > 1 else None
+        window.add_file_tab(left, right)
 
     window.show()
     return app.exec()
