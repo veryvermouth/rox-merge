@@ -22,7 +22,10 @@ python -m pip install -e ".[dev]"   # 의존성 + 개발 도구(pytest)
 pytest                               # 테스트 실행
 python -m rox_merge                  # GUI 실행 (선택: 좌/우 파일 경로 2개)
 python -m rox_merge left.py right.py
+python -m rox_merge dir_a dir_b      # 인자가 폴더 2개면 폴더 비교 창
 ```
+
+실행 후에는 툴바의 **"파일 비교"/"폴더 비교"**(Ctrl+N / Ctrl+D) 버튼으로 두 모드를 오갈 수 있다.
 
 ## 진행 상황
 

@@ -35,6 +35,7 @@ class MainWindow(QMainWindow):
         self.resize(1100, 720)
 
         self._light_palette = QApplication.instance().palette()
+        self._children: list = []  # 이 창에서 연 다른 비교 창 참조 유지
         self._view = DiffView()
         self._overview = OverviewBar()
         self._ctl = DiffController(self._view, DiffOptions(), self)
@@ -57,6 +58,9 @@ class MainWindow(QMainWindow):
     def _build_actions(self) -> None:
         bar = self.addToolBar("main")
 
+        self._add_action(bar, "새 파일 비교", "Ctrl+N", self._open_file_compare)
+        self._add_action(bar, "폴더 비교", "Ctrl+D", self._open_folder_compare)
+        bar.addSeparator()
         self._add_action(bar, "왼쪽 열기", "Ctrl+O", lambda: self._open("left"))
         self._add_action(bar, "오른쪽 열기", "Ctrl+Shift+O", lambda: self._open("right"))
         self._add_action(bar, "저장", "Ctrl+S", self._save_active)
@@ -80,6 +84,19 @@ class MainWindow(QMainWindow):
         self._add_toggle(bar, "다크 테마", False, self._toggle_dark)
         bar.addSeparator()
         self._add_action(bar, "닫기", "Ctrl+W", self.close)
+
+    def _open_file_compare(self) -> None:
+        win = MainWindow()
+        self._children.append(win)
+        win.show()
+
+    def _open_folder_compare(self) -> None:
+        from rox_merge.ui.folder_view import FolderCompareWindow
+
+        win = FolderCompareWindow()
+        self._children.append(win)
+        win.show()
+        win.prompt_roots()
 
     def _toggle_dark(self, enabled: bool) -> None:
         theme = Theme(dark=enabled)

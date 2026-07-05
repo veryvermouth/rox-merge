@@ -60,6 +60,7 @@ class FolderCompareWindow(QMainWindow):
         self._diff_only = False
         self._tab_mode = False
         self._tab_controllers: dict[object, DiffController] = {}  # DiffView -> DiffController
+        self._children: list = []  # 이 창에서 연 다른 비교 창 참조 유지
 
         self._tree = QTreeWidget()
         self._tree.setHeaderLabels(["왼쪽", "오른쪽"])
@@ -92,6 +93,9 @@ class FolderCompareWindow(QMainWindow):
     # ------------------------------------------------------------- actions
     def _build_actions(self) -> None:
         bar = self.addToolBar("main")
+        self._act(bar, "파일 비교", "Ctrl+N", self._open_file_compare)
+        self._act(bar, "새 폴더 비교", "Ctrl+D", self._open_folder_compare)
+        bar.addSeparator()
         self._act(bar, "왼쪽 폴더", None, lambda: self._pick_root("left"))
         self._act(bar, "오른쪽 폴더", None, lambda: self._pick_root("right"))
         self._act(bar, "새로고침", "F5", self._refresh)
@@ -141,6 +145,30 @@ class FolderCompareWindow(QMainWindow):
         self._left_root = Path(left)
         self._right_root = Path(right)
         self._refresh()
+
+    def prompt_roots(self) -> None:
+        """좌/우 폴더를 순서대로 선택받아 비교한다."""
+        left = QFileDialog.getExistingDirectory(self, "왼쪽 폴더 선택")
+        if not left:
+            return
+        right = QFileDialog.getExistingDirectory(self, "오른쪽 폴더 선택")
+        if not right:
+            return
+        self.set_roots(left, right)
+
+    # -------------------------------------------------------- 다른 모드 열기
+    def _open_file_compare(self) -> None:
+        from rox_merge.ui.main_window import MainWindow
+
+        win = MainWindow()
+        self._children.append(win)
+        win.show()
+
+    def _open_folder_compare(self) -> None:
+        win = FolderCompareWindow()
+        self._children.append(win)
+        win.show()
+        win.prompt_roots()
 
     # --------------------------------------------------------------- slots
     def _pick_root(self, side: str) -> None:
