@@ -244,22 +244,8 @@ class DiffView(QAbstractScrollArea):
     def keyPressEvent(self, event):  # noqa: N802 (Qt)
         key = event.key()
         mods = event.modifiers()
-        ctrl = bool(mods & Qt.KeyboardModifier.ControlModifier)
         shift = bool(mods & Qt.KeyboardModifier.ShiftModifier)
-
-        # 선택/클립보드 (QAction으로 등록 안 된 조합만 여기서 처리)
-        if ctrl and key == Qt.Key.Key_A:
-            self._select_all()
-            return
-        if ctrl and key == Qt.Key.Key_C:
-            self._copy()
-            return
-        if ctrl and key == Qt.Key.Key_X:
-            self._cut()
-            return
-        if ctrl and key == Qt.Key.Key_V:
-            self._paste()
-            return
+        # 선택/클립보드(Ctrl+A/C/X/V)는 상위 '편집' 메뉴 액션이 처리한다.
 
         nav = {
             Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up,
@@ -413,6 +399,19 @@ class DiffView(QAbstractScrollArea):
             self._remove_selection()
         self._insert_text("\n")
         self._after_edit()
+
+    # ---------------------------------------------------- 편집 메뉴용 공개 API
+    def select_all(self) -> None:
+        self._select_all()
+
+    def copy_selection(self) -> None:
+        self._copy()
+
+    def cut_selection(self) -> None:
+        self._cut()
+
+    def paste_clipboard(self) -> None:
+        self._paste()
 
     # --------------------------------------------------------------- selection
     def _has_selection(self) -> bool:

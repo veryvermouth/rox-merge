@@ -1,7 +1,7 @@
 """폴더 비교 패널 (PLAN §6.4) — 탭에 들어가는 QWidget.
 
 위: 좌/우 대응 트리, 아래(분할 모드) 또는 내부 탭(새 탭 모드)에 파일 diff.
-자체 툴바를 품는다. 파일↔폴더 세션 추가는 상위(AppWindow)가 담당.
+툴바/메뉴는 상위 AppWindow가 제공하며, 이 패널의 공개 메서드를 호출한다.
 """
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QAction, QBrush, QColor, QKeySequence, QShortcut
+from PySide6.QtGui import QBrush, QColor, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QFileDialog,
     QHeaderView,
@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
     QSplitter,
     QTabBar,
     QTabWidget,
-    QToolBar,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -83,70 +82,62 @@ class FolderComparePane(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        layout.addWidget(self._build_toolbar())
         layout.addWidget(self._tabs, 1)
 
         esc = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
         esc.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         esc.activated.connect(self._on_escape)
 
-    # ------------------------------------------------------------- toolbar
-    def _build_toolbar(self) -> QToolBar:
-        bar = QToolBar()
-        self._act(bar, "왼쪽 폴더", None, lambda: self._pick_root("left"))
-        self._act(bar, "오른쪽 폴더", None, lambda: self._pick_root("right"))
-        self._act(bar, "새로고침", "F5", self._refresh)
-        bar.addSeparator()
+    # ---------------------------------------------------- AppWindow 공개 API
+    def controller(self) -> DiffController:
+        return self._active_controller()
 
-        self._toggle(bar, "다른 항목만", False, self._toggle_filter)
-        self._toggle(bar, "정확 비교(해시)", False, self._toggle_mode)
-        self._toggle(bar, "새 탭 모드", False, self._toggle_tab_mode)
-        bar.addSeparator()
+    def open_side(self, side: str) -> None:
+        self._pick_root(side)
 
-        self._act(bar, "전체 펼침", "Ctrl+]", self._tree.expandAll)
-        self._act(bar, "전체 접기", "Ctrl+[", self._tree.collapseAll)
-        self._act(bar, "초기 상태", "Ctrl+0", self._expand_differences)
-        bar.addSeparator()
+    def save(self, as_new: bool = False) -> None:
+        self._save_active()
 
-        self._act(bar, "저장", "Ctrl+S", self._save_active)
-        self._act(bar, "실행 취소", "Ctrl+Z", lambda: self._active_controller().undo_action())
-        self._act(bar, "다시 실행", ["Ctrl+Shift+Z", "Ctrl+Y"],
-                  lambda: self._active_controller().redo_action())
-        self._act(bar, "이전 차이", "Ctrl+1", lambda: self._active_controller().jump(-1))
-        self._act(bar, "다음 차이", "Ctrl+2", lambda: self._active_controller().jump(+1))
-        return bar
+    def refresh(self) -> None:
+        self._refresh()
 
-    def _act(self, bar, text, shortcut, slot) -> QAction:
-        action = QAction(text, self)
-        if isinstance(shortcut, list):
-            action.setShortcuts([QKeySequence(s) for s in shortcut])
-        elif shortcut:
-            action.setShortcut(QKeySequence(shortcut))
-        action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
-        action.triggered.connect(slot)
-        bar.addAction(action)
-        self.addAction(action)
-        return action
+    def expand_all(self) -> None:
+        self._tree.expandAll()
 
-    def _toggle(self, bar, text, checked, slot) -> QAction:
-        action = QAction(text, self)
-        action.setCheckable(True)
-        action.setChecked(checked)
-        action.toggled.connect(slot)
-        bar.addAction(action)
-        return action
+    def collapse_all(self) -> None:
+        self._tree.collapseAll()
 
-    # --------------------------------------------------------------- public
+    def reset_expand(self) -> None:
+        self._expand_differences()
+
+    def toggle_filter(self, on: bool) -> None:
+        self._toggle_filter(on)
+
+    def toggle_exact(self, on: bool) -> None:
+        self._toggle_mode(on)
+
+    def toggle_tab_mode(self, on: bool) -> None:
+        self._toggle_tab_mode(on)
+
+    def is_filter(self) -> bool:
+        return self._diff_only
+
+    def is_exact(self) -> bool:
+        return self._mode == MODE_EXACT
+
+    def is_tab_mode(self) -> bool:
+        return self._tab_mode
+
     def set_roots(self, left: str | Path, right: str | Path) -> None:
         self._left_root = Path(left)
         self._right_root = Path(right)
         self._refresh()
 
     def prompt_roots(self) -> None:
-        left = QFileDialog.getExistingDirectory(self, "왼쪽 폴더 선택")
+        left = QFileDialog.getExistingDirectory(self.window(), "왼쪽 폴더 선택")
         if not left:
             return
-        right = QFileDialog.getExistingDirectory(self, "오른쪽 폴더 선택")
+        right = QFileDialog.getExistingDirectory(self.window(), "오른쪽 폴더 선택")
         if not right:
             return
         self.set_roots(left, right)
@@ -158,7 +149,7 @@ class FolderComparePane(QWidget):
 
     # --------------------------------------------------------------- slots
     def _pick_root(self, side: str) -> None:
-        path = QFileDialog.getExistingDirectory(self, f"{side} 폴더 선택")
+        path = QFileDialog.getExistingDirectory(self.window(), f"{side} 폴더 선택")
         if not path:
             return
         if side == "left":
@@ -275,13 +266,13 @@ class FolderComparePane(QWidget):
         doc = ctl.left if side == "left" else ctl.right
         path = doc.path
         if path is None:
-            path, _ = QFileDialog.getSaveFileName(self, f"{side} 저장")
+            path, _ = QFileDialog.getSaveFileName(self.window(), f"{side} 저장")
             if not path:
                 return
         try:
             write_document(doc, path)
         except OSError as exc:
-            QMessageBox.critical(self, "저장 실패", str(exc))
+            QMessageBox.critical(self.window(), "저장 실패", str(exc))
             return
         self._refresh()
 
@@ -292,7 +283,7 @@ class FolderComparePane(QWidget):
             self._hide_diff()
 
     def _confirm_discard(self) -> bool:
-        box = QMessageBox(self)
+        box = QMessageBox(self.window())
         box.setIcon(QMessageBox.Icon.Warning)
         box.setWindowTitle("저장하지 않은 변경")
         box.setText("저장하지 않은 편집이 있습니다.\n무시하고 계속할까요?")
@@ -316,8 +307,8 @@ class FolderComparePane(QWidget):
         try:
             return read_document(path)
         except BinaryFileError:
-            QMessageBox.information(self, "바이너리 파일", f"바이너리 파일 - 비교 불가:\n{path}")
+            QMessageBox.information(self.window(), "바이너리 파일", f"바이너리 파일 - 비교 불가:\n{path}")
             return None
         except OSError as exc:
-            QMessageBox.warning(self, "열기 실패", str(exc))
+            QMessageBox.warning(self.window(), "열기 실패", str(exc))
             return None
