@@ -33,7 +33,9 @@ class AppWindow(QMainWindow):
         self._file_only: list[QAction] = []
         self._folder_only: list[QAction] = []
         self._dark = False
-        self._light_palette = QApplication.instance().palette()
+        _app = QApplication.instance()
+        self._light_palette = _app.palette()
+        self._orig_style = _app.style().objectName()  # 라이트 복원용 네이티브 스타일
         self._build_menu_and_toolbar()
 
     # ------------------------------------------------------- 메뉴/툴바 구성
@@ -266,7 +268,15 @@ class AppWindow(QMainWindow):
         theme = Theme(dark=on)
         app = QApplication.instance()
         if app is not None:
-            app.setPalette(dark_palette() if on else self._light_palette)
+            # Windows 네이티브 스타일은 팔레트를 무시하므로, 다크는 Fusion 스타일 +
+            # 다크 팔레트로 전환해 메뉴바/툴바/창까지 어둡게 한다. (스타일 → 팔레트 순서)
+            if on:
+                app.setStyle("Fusion")
+                app.setPalette(dark_palette())
+            else:
+                if self._orig_style:
+                    app.setStyle(self._orig_style)
+                app.setPalette(self._light_palette)
         for i in range(self._tabs.count()):
             pane = self._tabs.widget(i)
             if hasattr(pane, "apply_theme"):
