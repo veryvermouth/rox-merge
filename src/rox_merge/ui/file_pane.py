@@ -11,7 +11,6 @@ from dataclasses import replace
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
-    QApplication,
     QFileDialog,
     QHBoxLayout,
     QMessageBox,
@@ -25,7 +24,7 @@ from rox_merge.fileio import BinaryFileError, read_document, write_document
 from rox_merge.ui.diff_controller import DiffController
 from rox_merge.ui.diff_view import DiffView
 from rox_merge.ui.overview_bar import OverviewBar
-from rox_merge.ui.theme import Theme, dark_palette
+from rox_merge.ui.theme import Theme
 
 
 class FileComparePane(QWidget):
@@ -34,8 +33,6 @@ class FileComparePane(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._light_palette = QApplication.instance().palette()
-        self._dark = False
         self._view = DiffView()
         self._overview = OverviewBar()
         self._ctl = DiffController(self._view, DiffOptions(), self)
@@ -64,8 +61,9 @@ class FileComparePane(QWidget):
     def options(self) -> DiffOptions:
         return self._ctl.options
 
-    def is_dark(self) -> bool:
-        return self._dark
+    def apply_theme(self, theme: Theme) -> None:
+        self._view.set_theme(theme)
+        self._overview.set_theme(theme)
 
     # --------------------------------------------------------------- slots
     def _open(self, side: str) -> None:
@@ -97,15 +95,6 @@ class FileComparePane(QWidget):
             QMessageBox.critical(self.window(), "저장 실패", str(exc))
             return
         self._emit_title()
-
-    def _toggle_dark(self, enabled: bool) -> None:
-        self._dark = enabled
-        theme = Theme(dark=enabled)
-        self._view.set_theme(theme)
-        self._overview.set_theme(theme)
-        app = QApplication.instance()
-        if app is not None:
-            app.setPalette(dark_palette() if enabled else self._light_palette)
 
     def _toggle_moves(self, enabled: bool) -> None:
         self._ctl.set_options(replace(self._ctl.options, detect_moves=enabled))

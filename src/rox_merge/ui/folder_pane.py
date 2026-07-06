@@ -36,6 +36,7 @@ from rox_merge.core.folder_compare import (
 from rox_merge.fileio import BinaryFileError, new_document, read_document, write_document
 from rox_merge.ui.diff_controller import DiffController
 from rox_merge.ui.diff_view import DiffView
+from rox_merge.ui.theme import Theme
 
 _STATUS_COLOR = {
     SAME: QColor(120, 120, 120),
@@ -57,6 +58,7 @@ class FolderComparePane(QWidget):
         self._diff_only = False
         self._tab_mode = False
         self._tab_controllers: dict[object, DiffController] = {}  # DiffView -> DiffController
+        self._theme = Theme(dark=False)
 
         self._tree = QTreeWidget()
         self._tree.setHeaderLabels(["왼쪽", "오른쪽"])
@@ -89,6 +91,12 @@ class FolderComparePane(QWidget):
         esc.activated.connect(self._on_escape)
 
     # ---------------------------------------------------- AppWindow 공개 API
+    def apply_theme(self, theme: Theme) -> None:
+        self._theme = theme
+        self._diff.set_theme(theme)
+        for view in self._tab_controllers:
+            view.set_theme(theme)
+
     def controller(self) -> DiffController:
         return self._active_controller()
 
@@ -234,6 +242,7 @@ class FolderComparePane(QWidget):
 
     def _open_in_new_tab(self, name, left_doc, right_doc) -> None:
         view = DiffView()
+        view.set_theme(self._theme)
         ctl = DiffController(view, self._ctl.options, self)
         self._tab_controllers[view] = ctl
         ctl.set_documents(left_doc, right_doc)

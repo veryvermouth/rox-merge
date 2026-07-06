@@ -14,6 +14,7 @@ from rox_merge.core.document import Document
 from rox_merge.ui.diff_view import DiffView
 from rox_merge.ui.file_pane import FileComparePane
 from rox_merge.ui.folder_pane import FolderComparePane
+from rox_merge.ui.theme import Theme, dark_palette
 
 
 class AppWindow(QMainWindow):
@@ -31,6 +32,8 @@ class AppWindow(QMainWindow):
 
         self._file_only: list[QAction] = []
         self._folder_only: list[QAction] = []
+        self._dark = False
+        self._light_palette = QApplication.instance().palette()
         self._build_menu_and_toolbar()
 
     # ------------------------------------------------------- 메뉴/툴바 구성
@@ -82,7 +85,7 @@ class AppWindow(QMainWindow):
         m.addAction(self._mk("글꼴 축소", "Ctrl+-", lambda: self._zoom(-1)))
         m.addAction(self._mk("원래 크기 / 초기 상태", "Ctrl+0", self._reset0))
         m.addSeparator()
-        self._act_dark = self._mk("다크 테마", None, self._toggle_dark, checkable=True, file_only=True)
+        self._act_dark = self._mk("다크 테마", None, self._toggle_dark, checkable=True)
         m.addAction(self._act_dark)
         m.addSeparator()
         self._act_expand = self._mk("전체 펼침", "Ctrl+]", self._expand_all, folder_only=True)
@@ -153,6 +156,7 @@ class AppWindow(QMainWindow):
         if right is not None:
             pane._set_doc("right", right)
         pane._recompute()
+        pane.apply_theme(Theme(dark=self._dark))
         index = self._tabs.addTab(pane, pane.title())
         pane.title_changed.connect(lambda t, p=pane: self._set_tab_title(p, t))
         pane.status_changed.connect(self.statusBar().showMessage)
@@ -161,6 +165,7 @@ class AppWindow(QMainWindow):
 
     def add_folder_tab(self, left=None, right=None):
         pane = FolderComparePane()
+        pane.apply_theme(Theme(dark=self._dark))
         index = self._tabs.addTab(pane, pane.title())
         pane.title_changed.connect(lambda t, p=pane: self._set_tab_title(p, t))
         self._tabs.setCurrentIndex(index)
@@ -257,9 +262,15 @@ class AppWindow(QMainWindow):
             p._toggle_case(on)
 
     def _toggle_dark(self, on: bool) -> None:
-        p = self._pane()
-        if isinstance(p, FileComparePane):
-            p._toggle_dark(on)
+        self._dark = on
+        theme = Theme(dark=on)
+        app = QApplication.instance()
+        if app is not None:
+            app.setPalette(dark_palette() if on else self._light_palette)
+        for i in range(self._tabs.count()):
+            pane = self._tabs.widget(i)
+            if hasattr(pane, "apply_theme"):
+                pane.apply_theme(theme)
 
     def _toggle_exact(self, on: bool) -> None:
         p = self._pane()
@@ -314,11 +325,11 @@ class AppWindow(QMainWindow):
             self._set_check(self._act_moves, o.detect_moves)
             self._set_check(self._act_ws, o.ignore_whitespace)
             self._set_check(self._act_case, o.ignore_case)
-            self._set_check(self._act_dark, p.is_dark())
         elif is_folder:
             self._set_check(self._act_exact, p.is_exact())
             self._set_check(self._act_filter, p.is_filter())
             self._set_check(self._act_tabmode, p.is_tab_mode())
+        self._set_check(self._act_dark, self._dark)  # 다크는 전역
         self._sync_window_title()
 
     @staticmethod
