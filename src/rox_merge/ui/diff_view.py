@@ -33,6 +33,7 @@ class DiffView(QAbstractScrollArea):
     active_side_changed = Signal(str)        # "left" | "right"
     merge_requested = Signal(int, str)       # (hunk_id, "l2r" | "r2l")
     edited = Signal()                        # 편집 발생(디바운스 재계산 트리거)
+    structure_changed = Signal()             # 라인 수 변경(즉시 재계산 트리거)
     edit_committed = Signal(str, object, object)  # (side, old_lines, new_lines)
 
     def __init__(self, parent=None):
@@ -46,6 +47,7 @@ class DiffView(QAbstractScrollArea):
         self._base_font_pt = 11
         self._read_only = False
         self._content_px = 0  # 가장 긴 줄의 실제 픽셀 너비(캐시)
+        self._synced_line_total = 0  # 마지막 재계산 시점의 좌+우 라인 수
 
         # 커서(활성 쪽 문서 기준): 라인/열
         self._cur_line = 0
@@ -78,6 +80,7 @@ class DiffView(QAbstractScrollArea):
         if self._current_hunk >= len(result.hunks):
             self._current_hunk = -1
         self._clamp_cursor()
+        self._synced_line_total = len(self._left()) + len(self._right())
         self._recompute_content_width()
         self._update_scrollbars()
         self.viewport().update()
@@ -216,7 +219,12 @@ class DiffView(QAbstractScrollArea):
     def _after_edit(self) -> None:
         self._collapse_selection()
         self._grow_content_width()
+        # 라인 수가 바뀌는 구조적 편집(Enter/줄 병합/멀티라인)은 즉시 재계산해야
+        # 정렬(gap)이 바로 반영된다. 같은 줄 문자 편집은 debounce로 충분.
+        structural = (len(self._left()) + len(self._right())) != self._synced_line_total
         self.edited.emit()
+        if structural:
+            self.structure_changed.emit()
         self._ensure_cursor_visible()
         self.viewport().update()
 

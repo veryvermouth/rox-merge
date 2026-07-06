@@ -36,6 +36,7 @@ class DiffController(QObject):
 
         view.merge_requested.connect(self._on_merge)
         view.edited.connect(self._timer.start)
+        view.structure_changed.connect(self._recompute_now)
         view.edit_committed.connect(self._on_edit_committed)
 
     # --------------------------------------------------------------- documents
@@ -63,6 +64,11 @@ class DiffController(QObject):
         result = build_result(self.left, self.right, self.options)
         self.view.set_data(self.left, self.right, result)
         self.recomputed.emit()
+
+    def _recompute_now(self) -> None:
+        """구조적 편집: debounce를 건너뛰고 즉시 재계산(정렬 즉시 반영)."""
+        self._timer.stop()
+        self.recompute()
 
     # ------------------------------------------------------------ edit / merge
     def commit_edit(self) -> None:
