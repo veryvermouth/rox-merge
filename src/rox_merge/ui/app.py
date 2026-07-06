@@ -19,6 +19,8 @@ def run(argv: list[str] | None = None) -> int:
     """
     argv = list(sys.argv if argv is None else argv)
     app = QApplication(argv)
+    app.setOrganizationName("rox-merge")
+    app.setApplicationName("rox-merge")
     window = AppWindow()
 
     args = argv[1:3]

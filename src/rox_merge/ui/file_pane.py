@@ -65,6 +65,12 @@ class FileComparePane(QWidget):
         self._view.set_theme(theme)
         self._overview.set_theme(theme)
 
+    def apply_font(self, pt: int) -> None:
+        self._view.set_font_point_size(pt)
+
+    def apply_options(self, opts: DiffOptions) -> None:
+        self._ctl.set_options(opts)
+
     # --------------------------------------------------------------- slots
     def _open(self, side: str) -> None:
         path, _ = QFileDialog.getOpenFileName(self.window(), f"{side} 파일 열기")

@@ -7,9 +7,13 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
+from PySide6.QtCore import QSettings
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import QApplication, QMainWindow, QTabWidget, QToolBar
 
+from rox_merge.core.diff import DiffOptions
 from rox_merge.core.document import Document
 from rox_merge.ui.diff_view import DiffView
 from rox_merge.ui.file_pane import FileComparePane
@@ -28,15 +32,29 @@ class AppWindow(QMainWindow):
         self._tabs.setMovable(True)
         self._tabs.tabCloseRequested.connect(self._close_tab)
         self._tabs.currentChanged.connect(self._sync)
+        # 탭 높이 살짝 축소
+        self._tabs.setStyleSheet("QTabBar::tab { padding: 2px 12px; }")
         self.setCentralWidget(self._tabs)
 
         self._file_only: list[QAction] = []
         self._folder_only: list[QAction] = []
-        self._dark = False
+
+        # 저장된 설정 복원 (폰트/테마/비교 옵션)
+        self._settings = QSettings()
+        s = self._settings
+        self._font_pt = int(s.value("font_pt", 11))
+        self._dark = s.value("dark", False, type=bool)
+        self._default_options = DiffOptions(
+            detect_moves=s.value("detect_moves", True, type=bool),
+            ignore_whitespace=s.value("ignore_whitespace", False, type=bool),
+            ignore_case=s.value("ignore_case", False, type=bool),
+        )
+        self._folder_exact = s.value("folder_exact", False, type=bool)
+
         # 라이트/다크 모두 Fusion 스타일 + 명시적 팔레트로 고정(OS 테마 무관).
         _app = QApplication.instance()
         _app.setStyle("Fusion")
-        _app.setPalette(light_palette())
+        _app.setPalette(dark_palette() if self._dark else light_palette())
         self._build_menu_and_toolbar()
 
     # ------------------------------------------------------- 메뉴/툴바 구성
@@ -158,8 +176,9 @@ class AppWindow(QMainWindow):
             pane._set_doc("left", left)
         if right is not None:
             pane._set_doc("right", right)
-        pane._recompute()
+        pane.apply_options(self._default_options)  # 저장된 비교 옵션 + 재계산
         pane.apply_theme(Theme(dark=self._dark))
+        pane.apply_font(self._font_pt)
         index = self._tabs.addTab(pane, pane.title())
         pane.title_changed.connect(lambda t, p=pane: self._set_tab_title(p, t))
         pane.status_changed.connect(self.statusBar().showMessage)
@@ -169,6 +188,9 @@ class AppWindow(QMainWindow):
     def add_folder_tab(self, left=None, right=None):
         pane = FolderComparePane()
         pane.apply_theme(Theme(dark=self._dark))
+        pane.apply_font(self._font_pt)
+        if self._folder_exact:
+            pane.toggle_exact(True)
         index = self._tabs.addTab(pane, pane.title())
         pane.title_changed.connect(lambda t, p=pane: self._set_tab_title(p, t))
         self._tabs.setCurrentIndex(index)
@@ -218,14 +240,20 @@ class AppWindow(QMainWindow):
             c.jump(delta)
 
     def _zoom(self, delta: int) -> None:
-        c = self._controller()
-        if c:
-            c.zoom(delta)
+        self._font_pt = max(6, min(40, self._font_pt + delta))
+        self._apply_font_all()
+
+    def _apply_font_all(self) -> None:
+        for i in range(self._tabs.count()):
+            p = self._tabs.widget(i)
+            if hasattr(p, "apply_font"):
+                p.apply_font(self._font_pt)
 
     def _reset0(self) -> None:
         p = self._pane()
         if isinstance(p, FileComparePane):
-            p.controller().zoom_reset()
+            self._font_pt = 11  # 글꼴 원래 크기(전역)
+            self._apply_font_all()
         elif isinstance(p, FolderComparePane):
             p.reset_expand()
 
@@ -250,16 +278,19 @@ class AppWindow(QMainWindow):
             v.select_all()
 
     def _toggle_moves(self, on: bool) -> None:
+        self._default_options = replace(self._default_options, detect_moves=on)
         p = self._pane()
         if isinstance(p, FileComparePane):
             p._toggle_moves(on)
 
     def _toggle_ws(self, on: bool) -> None:
+        self._default_options = replace(self._default_options, ignore_whitespace=on)
         p = self._pane()
         if isinstance(p, FileComparePane):
             p._toggle_whitespace(on)
 
     def _toggle_case(self, on: bool) -> None:
+        self._default_options = replace(self._default_options, ignore_case=on)
         p = self._pane()
         if isinstance(p, FileComparePane):
             p._toggle_case(on)
@@ -279,6 +310,7 @@ class AppWindow(QMainWindow):
                 pane.apply_theme(theme)
 
     def _toggle_exact(self, on: bool) -> None:
+        self._folder_exact = on
         p = self._pane()
         if isinstance(p, FolderComparePane):
             p.toggle_exact(on)
@@ -367,3 +399,13 @@ class AppWindow(QMainWindow):
             widget.deleteLater()
         if self._tabs.count() == 0:
             self.add_file_tab()  # 최소 한 탭 유지
+
+    def closeEvent(self, event):  # noqa: N802 (Qt) — 종료 시 설정 저장
+        s = self._settings
+        s.setValue("font_pt", self._font_pt)
+        s.setValue("dark", self._dark)
+        s.setValue("detect_moves", self._default_options.detect_moves)
+        s.setValue("ignore_whitespace", self._default_options.ignore_whitespace)
+        s.setValue("ignore_case", self._default_options.ignore_case)
+        s.setValue("folder_exact", self._folder_exact)
+        super().closeEvent(event)
