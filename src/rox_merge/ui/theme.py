@@ -63,17 +63,19 @@ class Theme:
             self.caret = QColor(20, 20, 20)
             self.move_line = QColor(150, 120, 210)
             self.selection = QColor(51, 153, 255, 80)
+            # Araxis Merge 라이트 테마 계열: 변경=따뜻한 크림, 추가=연한 초록,
+            # 삭제=연한 분홍, 이동=연한 보라.
             self._line_bg = {
-                KIND_INSERT: QColor(218, 251, 225),      # 초록 계열
-                KIND_DELETE: QColor(255, 228, 228),      # 빨강 계열
-                KIND_CHANGE: QColor(255, 249, 196),      # 노랑 계열
-                KIND_WHITESPACE: QColor(236, 240, 245),  # 옅은 색
-                KIND_MOVED: QColor(233, 222, 252),       # 보라 계열
+                KIND_INSERT: QColor(217, 240, 217),      # 추가(연한 초록)
+                KIND_DELETE: QColor(250, 223, 223),      # 삭제(연한 분홍)
+                KIND_CHANGE: QColor(252, 242, 224),      # 변경(따뜻한 크림)
+                KIND_WHITESPACE: QColor(236, 240, 245),  # 공백만(옅은 회색)
+                KIND_MOVED: QColor(233, 224, 250),       # 이동(연한 보라)
             }
             self._intraline_bg = {
-                KIND_INSERT: QColor(150, 235, 170),
-                KIND_DELETE: QColor(245, 170, 170),
-                KIND_CHANGE: QColor(255, 224, 130),
+                KIND_INSERT: QColor(168, 216, 168),      # 추가 단어(진한 초록)
+                KIND_DELETE: QColor(240, 178, 178),      # 삭제 단어(진한 분홍)
+                KIND_CHANGE: QColor(246, 221, 165),      # 변경 단어(골든 탄)
             }
 
     def line_bg(self, kind: str) -> QColor | None:
