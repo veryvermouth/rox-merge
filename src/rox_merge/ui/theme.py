@@ -87,6 +87,29 @@ class Theme:
         return self._intraline_bg.get(kind)
 
 
+def light_palette() -> QPalette:
+    """창 크롬용 라이트 QPalette (Fusion과 함께 써서 OS 테마와 무관하게 고정)."""
+    p = QPalette()
+    window = QColor(240, 240, 240)
+    base = QColor(255, 255, 255)
+    text = QColor(30, 30, 30)
+    p.setColor(QPalette.ColorRole.Window, window)
+    p.setColor(QPalette.ColorRole.WindowText, text)
+    p.setColor(QPalette.ColorRole.Base, base)
+    p.setColor(QPalette.ColorRole.AlternateBase, QColor(245, 245, 245))
+    p.setColor(QPalette.ColorRole.Text, text)
+    p.setColor(QPalette.ColorRole.Button, window)
+    p.setColor(QPalette.ColorRole.ButtonText, text)
+    p.setColor(QPalette.ColorRole.ToolTipBase, base)
+    p.setColor(QPalette.ColorRole.ToolTipText, text)
+    p.setColor(QPalette.ColorRole.Highlight, QColor(51, 153, 255))
+    p.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
+    p.setColor(
+        QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor(150, 150, 150)
+    )
+    return p
+
+
 def dark_palette() -> QPalette:
     """창 크롬(툴바/트리/상태바 등)용 다크 QPalette."""
     p = QPalette()

@@ -14,7 +14,7 @@ from rox_merge.core.document import Document
 from rox_merge.ui.diff_view import DiffView
 from rox_merge.ui.file_pane import FileComparePane
 from rox_merge.ui.folder_pane import FolderComparePane
-from rox_merge.ui.theme import Theme, dark_palette
+from rox_merge.ui.theme import Theme, dark_palette, light_palette
 
 
 class AppWindow(QMainWindow):
@@ -33,9 +33,10 @@ class AppWindow(QMainWindow):
         self._file_only: list[QAction] = []
         self._folder_only: list[QAction] = []
         self._dark = False
+        # 라이트/다크 모두 Fusion 스타일 + 명시적 팔레트로 고정(OS 테마 무관).
         _app = QApplication.instance()
-        self._light_palette = _app.palette()
-        self._orig_style = _app.style().objectName()  # 라이트 복원용 네이티브 스타일
+        _app.setStyle("Fusion")
+        _app.setPalette(light_palette())
         self._build_menu_and_toolbar()
 
     # ------------------------------------------------------- 메뉴/툴바 구성
@@ -268,15 +269,10 @@ class AppWindow(QMainWindow):
         theme = Theme(dark=on)
         app = QApplication.instance()
         if app is not None:
-            # Windows 네이티브 스타일은 팔레트를 무시하므로, 다크는 Fusion 스타일 +
-            # 다크 팔레트로 전환해 메뉴바/툴바/창까지 어둡게 한다. (스타일 → 팔레트 순서)
-            if on:
-                app.setStyle("Fusion")
-                app.setPalette(dark_palette())
-            else:
-                if self._orig_style:
-                    app.setStyle(self._orig_style)
-                app.setPalette(self._light_palette)
+            # 둘 다 Fusion. 라이트도 네이티브로 되돌리지 않고 라이트 팔레트를 써서
+            # OS가 다크 모드여도 라이트 크롬이 유지되게 한다.
+            app.setStyle("Fusion")
+            app.setPalette(dark_palette() if on else light_palette())
         for i in range(self._tabs.count()):
             pane = self._tabs.widget(i)
             if hasattr(pane, "apply_theme"):
