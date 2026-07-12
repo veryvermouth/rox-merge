@@ -6,6 +6,10 @@ __pycache__/
 build/
 dist/
 
+# PyInstaller
+*.spec
+build_pyi.log
+
 # Virtual envs
 .venv/
 venv/

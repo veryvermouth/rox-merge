@@ -19,6 +19,14 @@ pytest                                       # 테스트 실행
 하나의 창에서 **탭 단위 비교 세션**을 연다. 상단 **메뉴바 + 간단 툴바**의 `새 파일 비교(Ctrl+N)` /
 `새 폴더 비교(Ctrl+D)`로 탭을 계속 추가할 수 있다. 메뉴 항목은 현재 활성 탭에 맞춰 활성/비활성된다.
 
+### 실행 파일(.exe) 빌드 — Windows
+
+```bash
+python -m pip install -e ".[build]"        # PyInstaller
+python -m PyInstaller --name rox-merge --windowed --onefile --paths src --noconfirm src/rox_merge/__main__.py
+# 결과: dist/rox-merge.exe (더블클릭 실행)
+```
+
 ## 주요 기능
 
 ### 파일 비교 (탭)
