@@ -283,13 +283,16 @@ class AppWindow(QMainWindow):
                 p.apply_tree_font(self._folder_font_pt)   # 트리는 폴더 글꼴
 
     def _reset0(self) -> None:
-        # Ctrl+0: 글꼴을 기본 크기로. 폴더 탭은 트리+하단 diff 둘 다 리셋.
+        # Ctrl+0: 글꼴 기본 크기로. zoom과 동일하게 포커스 기준으로 분기.
+        # diff(파일 비교 창) 포커스 → 파일 글꼴(공유), 트리 포커스 → 폴더 글꼴.
         p = self._pane()
-        if isinstance(p, FolderComparePane):
+        if isinstance(p, FileComparePane):
             self._file_font_pt = 11
-            self._folder_font_pt = 11
-        else:
-            self._file_font_pt = 11
+        elif isinstance(p, FolderComparePane):
+            if isinstance(QApplication.focusWidget(), DiffView):
+                self._file_font_pt = 11
+            else:
+                self._folder_font_pt = 11
         self._apply_font_all()
 
     def _reset_expand(self) -> None:
