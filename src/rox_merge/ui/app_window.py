@@ -117,13 +117,15 @@ class AppWindow(QMainWindow):
         m.addSeparator()
         m.addAction(self._mk("글꼴 확대", ["Ctrl++", "Ctrl+="], lambda: self._zoom(+1)))
         m.addAction(self._mk("글꼴 축소", "Ctrl+-", lambda: self._zoom(-1)))
-        m.addAction(self._mk("원래 크기 / 초기 상태", "Ctrl+0", self._reset0))
+        m.addAction(self._mk("글꼴 원래 크기", "Ctrl+0", self._reset0))
         m.addSeparator()
         self._act_dark = self._mk("다크 테마", None, self._toggle_dark, checkable=True)
         m.addAction(self._act_dark)
         m.addSeparator()
         self._act_expand = self._mk("전체 펼침", "Ctrl+]", self._expand_all, folder_only=True)
         self._act_collapse = self._mk("전체 접기", "Ctrl+[", self._collapse_all, folder_only=True)
+        self._act_treereset = self._mk("트리 초기 상태", "Ctrl+Shift+0", self._reset_expand, folder_only=True)
+        m.addAction(self._act_treereset)
         m.addAction(self._act_expand)
         m.addAction(self._act_collapse)
 
@@ -281,11 +283,18 @@ class AppWindow(QMainWindow):
                 p.apply_tree_font(self._folder_font_pt)   # 트리는 폴더 글꼴
 
     def _reset0(self) -> None:
+        # Ctrl+0: 글꼴을 기본 크기로. 폴더 탭은 트리+하단 diff 둘 다 리셋.
         p = self._pane()
-        if isinstance(p, FileComparePane):
-            self._file_font_pt = 11  # 텍스트 비교 글꼴 원래 크기
-            self._apply_font_all()
-        elif isinstance(p, FolderComparePane):
+        if isinstance(p, FolderComparePane):
+            self._file_font_pt = 11
+            self._folder_font_pt = 11
+        else:
+            self._file_font_pt = 11
+        self._apply_font_all()
+
+    def _reset_expand(self) -> None:
+        p = self._pane()
+        if isinstance(p, FolderComparePane):
             p.reset_expand()
 
     def _copy(self) -> None:
