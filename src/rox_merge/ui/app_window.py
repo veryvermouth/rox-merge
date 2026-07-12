@@ -41,7 +41,7 @@ class AppWindow(QMainWindow):
         self._settings = QSettings()
         s = self._settings
         self._file_font_pt = int(s.value("file_font_pt", 11))
-        self._folder_font_pt = int(s.value("folder_font_pt", 11))
+        self._folder_font_pt = int(s.value("folder_font_pt", 10))  # 트리 기본 글꼴
         self._dark = s.value("dark", False, type=bool)
         self._default_options = DiffOptions(
             detect_moves=s.value("detect_moves", True, type=bool),
@@ -292,7 +292,7 @@ class AppWindow(QMainWindow):
             if isinstance(QApplication.focusWidget(), DiffView):
                 self._file_font_pt = 11
             else:
-                self._folder_font_pt = 11
+                self._folder_font_pt = 10  # 트리 기본 글꼴
         self._apply_font_all()
 
     def _reset_expand(self) -> None:
