@@ -102,7 +102,7 @@ class FolderComparePane(QWidget):
         self._tab_mode = False
         self._tab_controllers: dict[object, DiffController] = {}  # DiffView -> DiffController
         self._theme = Theme(dark=False)
-        self._font_pt = 11
+        self._diff_font_pt = 11  # 하단/내부 diff 뷰 글꼴(파일 비교와 공유)
 
         self._tree = QTreeWidget()
         self._tree.setHeaderLabels(["왼쪽", "오른쪽"])
@@ -142,12 +142,15 @@ class FolderComparePane(QWidget):
         for view in self._tab_controllers:
             view.set_theme(theme)
 
-    def apply_font(self, pt: int) -> None:
-        self._font_pt = pt
+    def apply_diff_font(self, pt: int) -> None:
+        """하단/내부 diff 뷰 글꼴(파일 비교 글꼴과 공유)."""
+        self._diff_font_pt = pt
         self._diff.set_font_point_size(pt)
         for view in self._tab_controllers:
             view.set_font_point_size(pt)
-        # 폴더 트리 글꼴도 함께 조절
+
+    def apply_tree_font(self, pt: int) -> None:
+        """폴더 트리 글꼴."""
         f = self._tree.font()
         f.setPointSize(pt)
         self._tree.setFont(f)
@@ -298,7 +301,7 @@ class FolderComparePane(QWidget):
     def _open_in_new_tab(self, name, left_doc, right_doc) -> None:
         view = DiffView()
         view.set_theme(self._theme)
-        view.set_font_point_size(self._font_pt)
+        view.set_font_point_size(self._diff_font_pt)
         ctl = DiffController(view, self._ctl.options, self)
         self._tab_controllers[view] = ctl
         ctl.set_documents(left_doc, right_doc)

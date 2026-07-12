@@ -199,7 +199,8 @@ class AppWindow(QMainWindow):
     def add_folder_tab(self, left=None, right=None):
         pane = FolderComparePane()
         pane.apply_theme(Theme(dark=self._dark))
-        pane.apply_font(self._folder_font_pt)
+        pane.apply_diff_font(self._file_font_pt)    # 하단 diff는 파일 글꼴 공유
+        pane.apply_tree_font(self._folder_font_pt)  # 트리는 폴더 글꼴
         if self._folder_exact:
             pane.toggle_exact(True)
         index = self._tabs.addTab(pane, pane.title())
@@ -251,12 +252,16 @@ class AppWindow(QMainWindow):
             c.jump(delta)
 
     def _zoom(self, delta: int) -> None:
-        # 텍스트 비교와 폴더 비교의 글꼴 크기는 따로 관리
+        # diff 글꼴(파일 비교 + 폴더 하단 diff 공유) vs 폴더 트리 글꼴을 구분.
         p = self._pane()
         if isinstance(p, FileComparePane):
             self._file_font_pt = max(6, min(40, self._file_font_pt + delta))
         elif isinstance(p, FolderComparePane):
-            self._folder_font_pt = max(6, min(40, self._folder_font_pt + delta))
+            # 폴더 탭: 하단/내부 diff에 포커스면 파일 글꼴, 아니면 트리 글꼴
+            if isinstance(QApplication.focusWidget(), DiffView):
+                self._file_font_pt = max(6, min(40, self._file_font_pt + delta))
+            else:
+                self._folder_font_pt = max(6, min(40, self._folder_font_pt + delta))
         self._apply_font_all()
 
     def _apply_font_all(self) -> None:
@@ -265,7 +270,8 @@ class AppWindow(QMainWindow):
             if isinstance(p, FileComparePane):
                 p.apply_font(self._file_font_pt)
             elif isinstance(p, FolderComparePane):
-                p.apply_font(self._folder_font_pt)
+                p.apply_diff_font(self._file_font_pt)     # diff는 파일 글꼴 공유
+                p.apply_tree_font(self._folder_font_pt)   # 트리는 폴더 글꼴
 
     def _reset0(self) -> None:
         p = self._pane()
