@@ -103,6 +103,10 @@ class FolderComparePane(QWidget):
         self._diff.set_font_point_size(pt)
         for view in self._tab_controllers:
             view.set_font_point_size(pt)
+        # 폴더 트리 글꼴도 함께 조절
+        f = self._tree.font()
+        f.setPointSize(pt)
+        self._tree.setFont(f)
 
     def controller(self) -> DiffController:
         return self._active_controller()

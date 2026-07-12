@@ -1,2 +1,1 @@
-common line
-same
+shared content
