@@ -90,6 +90,32 @@ class _RightIndentDelegate(QStyledItemDelegate):
             painter.restore()
 
 
+def _item_depth(item: QTreeWidgetItem) -> int:
+    depth = 0
+    p = item.parent()
+    while p is not None:
+        depth += 1
+        p = p.parent()
+    return depth
+
+
+class _FolderTree(QTreeWidget):
+    """오른쪽 열(1열)의 펼침/접힘 화살표 클릭도 처리하는 트리."""
+
+    def mousePressEvent(self, event):  # noqa: N802 (Qt)
+        pos = event.position().toPoint()
+        if self.columnAt(pos.x()) == 1:
+            item = self.itemAt(pos)
+            if item is not None and item.childCount() > 0:
+                ind = self.indentation()
+                col1 = self.header().sectionViewportPosition(1)
+                arrow_left = col1 + (_item_depth(item) + 1) * ind - ind
+                if arrow_left <= pos.x() <= arrow_left + ind:
+                    item.setExpanded(not item.isExpanded())
+                    return
+        super().mousePressEvent(event)
+
+
 class FolderComparePane(QWidget):
     title_changed = Signal(str)
 
@@ -104,7 +130,7 @@ class FolderComparePane(QWidget):
         self._theme = Theme(dark=False)
         self._diff_font_pt = 11  # 하단/내부 diff 뷰 글꼴(파일 비교와 공유)
 
-        self._tree = QTreeWidget()
+        self._tree = _FolderTree()
         self._tree.setHeaderLabels(["왼쪽", "오른쪽"])
         self._tree.setColumnCount(2)
         header = self._tree.header()

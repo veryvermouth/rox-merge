@@ -2,7 +2,7 @@
 
 Araxis Merge 류의 **파일·폴더 비교/병합 도구** (PySide6 기반). 순수 Python diff 엔진 + 커스텀 페인팅 GUI.
 
-원래 설계/계획은 [docs/PLAN.md](docs/PLAN.md) 참조. 아래는 현재 구현된 기능 요약이다.
+원래 설계/계획은 [docs/PLAN.md](docs/PLAN.md), 변경 이력은 [CHANGELOG.md](CHANGELOG.md) 참조. 아래는 현재 구현된 기능 요약이다.
 
 ## 실행
 
