@@ -9,12 +9,14 @@ from __future__ import annotations
 import os
 from dataclasses import replace
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QLineEdit,
+    QMenu,
     QMessageBox,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -32,6 +34,7 @@ from rox_merge.ui.theme import Theme
 class FileComparePane(QWidget):
     title_changed = Signal(str)
     status_changed = Signal(str)
+    file_opened = Signal(str)  # 파일을 열면 경로를 알림(최근 목록용)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -42,21 +45,31 @@ class FileComparePane(QWidget):
         self._view.active_side_changed.connect(lambda *_: self._emit_title())
         self._overview.row_clicked.connect(self._view.verticalScrollBar().setValue)
 
-        # 좌/우 절대 경로 입력 칸 (Enter로 열기)
+        # 좌/우 절대 경로 입력 칸 (Enter로 열기) + 최근(▾) + 찾아보기(...)
         self._left_path = QLineEdit()
         self._left_path.setPlaceholderText("왼쪽 파일 경로 (Enter로 열기)")
         self._left_path.setClearButtonEnabled(True)
         self._left_path.returnPressed.connect(lambda: self._load_path("left"))
+        self._left_recent = self._make_recent_button("left")
+        self._left_browse = self._make_browse_button("left")
+
         self._right_path = QLineEdit()
         self._right_path.setPlaceholderText("오른쪽 파일 경로 (Enter로 열기)")
         self._right_path.setClearButtonEnabled(True)
         self._right_path.returnPressed.connect(lambda: self._load_path("right"))
+        self._right_recent = self._make_recent_button("right")
+        self._right_browse = self._make_browse_button("right")
 
         path_row = QHBoxLayout()
         path_row.setContentsMargins(2, 2, 2, 2)
-        path_row.setSpacing(4)
+        path_row.setSpacing(2)
         path_row.addWidget(self._left_path, 1)
+        path_row.addWidget(self._left_recent)
+        path_row.addWidget(self._left_browse)
+        path_row.addSpacing(6)
         path_row.addWidget(self._right_path, 1)
+        path_row.addWidget(self._right_recent)
+        path_row.addWidget(self._right_browse)
         path_row.addSpacing(self._overview.width() or 14)  # 미니맵 폭만큼 우측 정렬
 
         body = QWidget()
@@ -73,6 +86,37 @@ class FileComparePane(QWidget):
         layout.addWidget(body, 1)
 
         self._ctl.recompute()
+
+    # --------------------------------------------------------- 경로바 위젯
+    def _make_browse_button(self, side: str) -> QToolButton:
+        btn = QToolButton()
+        btn.setText("...")
+        btn.setToolTip(f"{side} 파일 찾아보기")
+        btn.clicked.connect(lambda: self._open(side))
+        return btn
+
+    def _make_recent_button(self, side: str) -> QToolButton:
+        btn = QToolButton()
+        btn.setText("▾")
+        btn.setToolTip("최근 파일")
+        btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        btn.setMenu(QMenu(btn))
+        return btn
+
+    def set_recent(self, paths: list[str]) -> None:
+        """최근 파일 목록으로 좌/우 드롭다운 메뉴를 갱신한다."""
+        for side, btn in (("left", self._left_recent), ("right", self._right_recent)):
+            menu = QMenu(btn)
+            if not paths:
+                act = menu.addAction("(최근 파일 없음)")
+                act.setEnabled(False)
+            else:
+                for p in paths:
+                    act = menu.addAction(p)
+                    act.triggered.connect(
+                        lambda checked=False, s=side, path=p: self._load(s, path)
+                    )
+            btn.setMenu(menu)
 
     # ---------------------------------------------------- AppWindow 공개 API
     def controller(self) -> DiffController:
@@ -120,6 +164,8 @@ class FileComparePane(QWidget):
             QMessageBox.critical(self.window(), "열기 실패", str(exc))
             return
         self._ctl.set_document(side, doc)
+        if doc.path:
+            self.file_opened.emit(doc.path)
 
     def _save_active(self, as_new: bool = False) -> None:
         self._ctl.commit_edit()

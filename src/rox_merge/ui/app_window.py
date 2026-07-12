@@ -49,6 +49,7 @@ class AppWindow(QMainWindow):
             ignore_case=s.value("ignore_case", False, type=bool),
         )
         self._folder_exact = s.value("folder_exact", False, type=bool)
+        self._recent = [str(p) for p in (s.value("recent", []) or [])][:15]
 
         # 라이트/다크 모두 Fusion 스타일 + 명시적 팔레트로 고정(OS 테마 무관).
         _app = QApplication.instance()
@@ -190,6 +191,8 @@ class AppWindow(QMainWindow):
         pane.apply_options(self._default_options)  # 저장된 비교 옵션 + 재계산
         pane.apply_theme(Theme(dark=self._dark))
         pane.apply_font(self._file_font_pt)
+        pane.set_recent(self._recent)
+        pane.file_opened.connect(self._on_file_opened)
         index = self._tabs.addTab(pane, pane.title())
         pane.title_changed.connect(lambda t, p=pane: self._set_tab_title(p, t))
         pane.status_changed.connect(self.statusBar().showMessage)
@@ -365,6 +368,16 @@ class AppWindow(QMainWindow):
         if isinstance(p, FolderComparePane):
             p.collapse_all()
 
+    def _on_file_opened(self, path: str) -> None:
+        if path in self._recent:
+            self._recent.remove(path)
+        self._recent.insert(0, path)
+        self._recent = self._recent[:15]
+        for i in range(self._tabs.count()):
+            p = self._tabs.widget(i)
+            if isinstance(p, FileComparePane):
+                p.set_recent(self._recent)
+
     def _about(self) -> None:
         from PySide6.QtWidgets import QMessageBox
 
@@ -441,4 +454,5 @@ class AppWindow(QMainWindow):
         s.setValue("ignore_whitespace", self._default_options.ignore_whitespace)
         s.setValue("ignore_case", self._default_options.ignore_case)
         s.setValue("folder_exact", self._folder_exact)
+        s.setValue("recent", self._recent)
         super().closeEvent(event)
