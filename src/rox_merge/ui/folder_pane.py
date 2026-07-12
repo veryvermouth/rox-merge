@@ -8,14 +8,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QRect, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QFileDialog,
     QHeaderView,
     QMessageBox,
     QSplitter,
+    QStyle,
     QStyledItemDelegate,
+    QStyleOption,
     QStyleOptionViewItem,
     QTabBar,
     QTabWidget,
@@ -62,10 +64,28 @@ class _RightIndentDelegate(QStyledItemDelegate):
         while parent.isValid():
             depth += 1
             parent = parent.parent()
-        indent = (depth + 1) * self._tree.indentation()
+        ind = self._tree.indentation()
+        indent = (depth + 1) * ind
+
+        # 이름을 depth만큼 들여써서 그림
         opt = QStyleOptionViewItem(option)
         opt.rect = option.rect.adjusted(indent, 0, 0, 0)
         super().paint(painter, opt, index)
+
+        # 폴더(자식 있는 항목)면 이름 왼쪽에 펼침/접힘 화살표 (왼쪽 트리와 동일)
+        item = self._tree.itemFromIndex(index)
+        if item is not None and item.childCount() > 0:
+            branch = QStyleOption()
+            branch.rect = QRect(
+                option.rect.left() + indent - ind, option.rect.top(),
+                ind, option.rect.height(),
+            )
+            branch.state = QStyle.StateFlag.State_Children | QStyle.StateFlag.State_Enabled
+            if item.isExpanded():
+                branch.state |= QStyle.StateFlag.State_Open
+            self._tree.style().drawPrimitive(
+                QStyle.PrimitiveElement.PE_IndicatorBranch, branch, painter, self._tree
+            )
 
 
 class FolderComparePane(QWidget):
