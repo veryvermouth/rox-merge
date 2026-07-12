@@ -140,6 +140,17 @@ class FileComparePane(QWidget):
         self._ctl.set_options(opts)
 
     # --------------------------------------------------------------- slots
+    def prompt_files(self) -> None:
+        """왼쪽 → 오른쪽 파일을 순서대로 선택받아 비교한다(새 파일 비교용)."""
+        left, _ = QFileDialog.getOpenFileName(self.window(), "왼쪽 파일 선택")
+        if not left:
+            return
+        self._load("left", left)
+        right, _ = QFileDialog.getOpenFileName(self.window(), "오른쪽 파일 선택")
+        if not right:
+            return
+        self._load("right", right)
+
     def _open(self, side: str) -> None:
         path, _ = QFileDialog.getOpenFileName(self.window(), f"{side} 파일 열기")
         if not path:

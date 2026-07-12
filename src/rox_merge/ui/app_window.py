@@ -75,13 +75,14 @@ class AppWindow(QMainWindow):
 
         # --- 파일
         m = mb.addMenu("파일(&F)")
-        a_newfile = self._mk("새 파일 비교", "Ctrl+N", lambda: self.add_file_tab())
+        a_newfile = self._mk("새 파일 비교", "Ctrl+N", self._new_file_tab)
         a_newfolder = self._mk("새 폴더 비교", "Ctrl+D", self.add_folder_tab)
         m.addAction(a_newfile)
         m.addAction(a_newfolder)
         m.addSeparator()
-        self._act_open_l = self._mk("왼쪽 열기", "Ctrl+O", lambda: self._open_side("left"))
-        self._act_open_r = self._mk("오른쪽 열기", "Ctrl+Shift+O", lambda: self._open_side("right"))
+        # 좌/우 열기는 폴더 탭 전용(루트 선택). 파일 탭은 경로칸의 '...' 버튼 사용.
+        self._act_open_l = self._mk("왼쪽 폴더 열기", "Ctrl+O", lambda: self._open_side("left"), folder_only=True)
+        self._act_open_r = self._mk("오른쪽 폴더 열기", "Ctrl+Shift+O", lambda: self._open_side("right"), folder_only=True)
         m.addAction(self._act_open_l)
         m.addAction(self._act_open_r)
         m.addSeparator()
@@ -151,8 +152,7 @@ class AppWindow(QMainWindow):
         for a in (a_newfile, a_newfolder):
             bar.addAction(a)
         bar.addSeparator()
-        for a in (self._act_open_l, self._act_open_r, a_save):
-            bar.addAction(a)
+        bar.addAction(a_save)
         bar.addSeparator()
         for a in (a_undo, a_redo):
             bar.addAction(a)
@@ -226,6 +226,10 @@ class AppWindow(QMainWindow):
     def _focused_view(self) -> DiffView | None:
         w = QApplication.focusWidget()
         return w if isinstance(w, DiffView) else None
+
+    def _new_file_tab(self) -> None:
+        pane = self.add_file_tab()
+        pane.prompt_files()
 
     def _open_side(self, side: str) -> None:
         p = self._pane()
@@ -401,8 +405,6 @@ class AppWindow(QMainWindow):
             a.setEnabled(is_file)
         for a in self._folder_only:
             a.setEnabled(is_folder)
-        self._act_open_l.setText("왼쪽 폴더" if is_folder else "왼쪽 열기")
-        self._act_open_r.setText("오른쪽 폴더" if is_folder else "오른쪽 열기")
         if is_file:
             o = p.options()
             self._set_check(self._act_moves, o.detect_moves)
