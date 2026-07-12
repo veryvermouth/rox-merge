@@ -91,7 +91,7 @@ class AppWindow(QMainWindow):
         m.addAction(a_save)
         m.addAction(a_saveas)
         m.addSeparator()
-        a_closetab = self._mk("탭 닫기", "Ctrl+W", self._close_current_tab)
+        a_closetab = self._mk("탭 닫기", ["Ctrl+W", "Ctrl+F4"], self._close_current_tab)
         a_quit = self._mk("종료", "Ctrl+Q", self.close)
         m.addAction(a_closetab)
         m.addAction(a_quit)
