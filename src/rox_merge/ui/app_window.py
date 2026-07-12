@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from PySide6.QtCore import QSettings
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction, QKeySequence, QPalette
 from PySide6.QtWidgets import QApplication, QMainWindow, QTabWidget, QToolBar
 
 from rox_merge.core.diff import DiffOptions
@@ -32,8 +32,6 @@ class AppWindow(QMainWindow):
         self._tabs.setMovable(True)
         self._tabs.tabCloseRequested.connect(self._close_tab)
         self._tabs.currentChanged.connect(self._sync)
-        # 탭 높이 살짝 축소
-        self._tabs.setStyleSheet("QTabBar::tab { padding: 2px 12px; }")
         self.setCentralWidget(self._tabs)
 
         self._file_only: list[QAction] = []
@@ -55,7 +53,19 @@ class AppWindow(QMainWindow):
         _app = QApplication.instance()
         _app.setStyle("Fusion")
         _app.setPalette(dark_palette() if self._dark else light_palette())
+        self._apply_tab_style()
         self._build_menu_and_toolbar()
+
+    def _apply_tab_style(self) -> None:
+        """탭 높이를 줄이되(패딩), 배경/글자색은 현재 팔레트에 맞춰 테마와 연동."""
+        pal = QApplication.instance().palette()
+        win = pal.color(QPalette.ColorRole.Window).name()
+        base = pal.color(QPalette.ColorRole.Base).name()
+        text = pal.color(QPalette.ColorRole.WindowText).name()
+        self._tabs.setStyleSheet(
+            f"QTabBar::tab {{ padding: 2px 12px; background: {win}; color: {text}; }}"
+            f"QTabBar::tab:selected {{ background: {base}; }}"
+        )
 
     # ------------------------------------------------------- 메뉴/툴바 구성
     def _build_menu_and_toolbar(self) -> None:
@@ -304,6 +314,7 @@ class AppWindow(QMainWindow):
             # OS가 다크 모드여도 라이트 크롬이 유지되게 한다.
             app.setStyle("Fusion")
             app.setPalette(dark_palette() if on else light_palette())
+        self._apply_tab_style()  # 탭 스타일시트도 새 팔레트 색으로 갱신
         for i in range(self._tabs.count()):
             pane = self._tabs.widget(i)
             if hasattr(pane, "apply_theme"):
