@@ -8,16 +8,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QRect, Qt, Signal
-from PySide6.QtGui import QBrush, QColor, QKeySequence, QShortcut
+from PySide6.QtCore import QPoint, QRect, Qt, Signal
+from PySide6.QtGui import QBrush, QColor, QKeySequence, QPainter, QPalette, QPolygon, QShortcut
 from PySide6.QtWidgets import (
     QFileDialog,
     QHeaderView,
     QMessageBox,
     QSplitter,
-    QStyle,
     QStyledItemDelegate,
-    QStyleOption,
     QStyleOptionViewItem,
     QTabBar,
     QTabWidget,
@@ -72,20 +70,24 @@ class _RightIndentDelegate(QStyledItemDelegate):
         opt.rect = option.rect.adjusted(indent, 0, 0, 0)
         super().paint(painter, opt, index)
 
-        # 폴더(자식 있는 항목)면 이름 왼쪽에 펼침/접힘 화살표 (왼쪽 트리와 동일)
+        # 폴더(자식 있는 항목)면 이름 왼쪽에 펼침/접힘 삼각형을 직접 그림
+        # (스타일의 PE_IndicatorBranch는 이 문맥에서 안 그려져 직접 그린다)
         item = self._tree.itemFromIndex(index)
         if item is not None and item.childCount() > 0:
-            branch = QStyleOption()
-            branch.rect = QRect(
+            arect = QRect(
                 option.rect.left() + indent - ind, option.rect.top(),
                 ind, option.rect.height(),
             )
-            branch.state = QStyle.StateFlag.State_Children | QStyle.StateFlag.State_Enabled
-            if item.isExpanded():
-                branch.state |= QStyle.StateFlag.State_Open
-            self._tree.style().drawPrimitive(
-                QStyle.PrimitiveElement.PE_IndicatorBranch, branch, painter, self._tree
-            )
+            cx, cy = arect.center().x(), arect.center().y()
+            painter.save()
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(option.palette.color(QPalette.ColorRole.WindowText))
+            if item.isExpanded():  # ▾
+                painter.drawPolygon(QPolygon([QPoint(cx - 4, cy - 2), QPoint(cx + 4, cy - 2), QPoint(cx, cy + 3)]))
+            else:  # ▸
+                painter.drawPolygon(QPolygon([QPoint(cx - 2, cy - 4), QPoint(cx - 2, cy + 4), QPoint(cx + 3, cy)]))
+            painter.restore()
 
 
 class FolderComparePane(QWidget):
