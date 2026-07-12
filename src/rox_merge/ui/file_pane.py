@@ -13,7 +13,9 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
+    QLineEdit,
     QMessageBox,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -40,11 +42,35 @@ class FileComparePane(QWidget):
         self._view.active_side_changed.connect(lambda *_: self._emit_title())
         self._overview.row_clicked.connect(self._view.verticalScrollBar().setValue)
 
-        row = QHBoxLayout(self)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(0)
-        row.addWidget(self._view, 1)
-        row.addWidget(self._overview)
+        # 좌/우 절대 경로 입력 칸 (Enter로 열기)
+        self._left_path = QLineEdit()
+        self._left_path.setPlaceholderText("왼쪽 파일 경로 (Enter로 열기)")
+        self._left_path.setClearButtonEnabled(True)
+        self._left_path.returnPressed.connect(lambda: self._load_path("left"))
+        self._right_path = QLineEdit()
+        self._right_path.setPlaceholderText("오른쪽 파일 경로 (Enter로 열기)")
+        self._right_path.setClearButtonEnabled(True)
+        self._right_path.returnPressed.connect(lambda: self._load_path("right"))
+
+        path_row = QHBoxLayout()
+        path_row.setContentsMargins(2, 2, 2, 2)
+        path_row.setSpacing(4)
+        path_row.addWidget(self._left_path, 1)
+        path_row.addWidget(self._right_path, 1)
+        path_row.addSpacing(self._overview.width() or 14)  # 미니맵 폭만큼 우측 정렬
+
+        body = QWidget()
+        brow = QHBoxLayout(body)
+        brow.setContentsMargins(0, 0, 0, 0)
+        brow.setSpacing(0)
+        brow.addWidget(self._view, 1)
+        brow.addWidget(self._overview)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addLayout(path_row)
+        layout.addWidget(body, 1)
 
         self._ctl.recompute()
 
@@ -76,6 +102,15 @@ class FileComparePane(QWidget):
         path, _ = QFileDialog.getOpenFileName(self.window(), f"{side} 파일 열기")
         if not path:
             return
+        self._load(side, path)
+
+    def _load_path(self, side: str) -> None:
+        edit = self._left_path if side == "left" else self._right_path
+        path = edit.text().strip()
+        if path:
+            self._load(side, path)
+
+    def _load(self, side: str, path: str) -> None:
         try:
             doc = read_document(path)
         except BinaryFileError as exc:
@@ -115,7 +150,15 @@ class FileComparePane(QWidget):
     def _on_recomputed(self) -> None:
         self._overview.set_result(self._view.result)
         self._emit_title()
+        self._sync_paths()
         self.status_changed.emit(guard_note(self._ctl.left, self._ctl.right) or "")
+
+    def _sync_paths(self) -> None:
+        # 입력 중이 아니면 현재 문서 경로로 갱신
+        if not self._left_path.hasFocus():
+            self._left_path.setText(self._ctl.left.path or "")
+        if not self._right_path.hasFocus():
+            self._right_path.setText(self._ctl.right.path or "")
 
     def _emit_title(self) -> None:
         self.title_changed.emit(self.title())
