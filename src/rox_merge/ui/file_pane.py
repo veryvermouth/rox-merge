@@ -9,12 +9,12 @@ from __future__ import annotations
 import os
 from dataclasses import replace
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QStringListModel, Signal
 from PySide6.QtWidgets import (
+    QCompleter,
     QFileDialog,
     QHBoxLayout,
     QLineEdit,
-    QMenu,
     QMessageBox,
     QToolButton,
     QVBoxLayout,
@@ -31,6 +31,17 @@ from rox_merge.ui.overview_bar import OverviewBar
 from rox_merge.ui.theme import Theme
 
 
+class _PathEdit(QLineEdit):
+    """포커스가 오면 최근 파일 completer 목록을 자동으로 펼쳐 보여주는 경로 입력칸."""
+
+    def focusInEvent(self, event):  # noqa: N802 (Qt)
+        super().focusInEvent(event)
+        completer = self.completer()
+        if completer is not None:
+            completer.setCompletionPrefix(self.text())
+            completer.complete()
+
+
 class FileComparePane(QWidget):
     title_changed = Signal(str)
     status_changed = Signal(str)
@@ -45,31 +56,22 @@ class FileComparePane(QWidget):
         self._view.active_side_changed.connect(lambda *_: self._emit_title())
         self._overview.row_clicked.connect(self._view.verticalScrollBar().setValue)
 
-        # 좌/우 절대 경로 입력 칸 (Enter로 열기) + 최근(▾) + 찾아보기(...)
-        self._left_path = QLineEdit()
-        self._left_path.setPlaceholderText("왼쪽 파일 경로 (Enter로 열기)")
-        self._left_path.setClearButtonEnabled(True)
-        self._left_path.returnPressed.connect(lambda: self._load_path("left"))
-        self._left_recent = self._make_recent_button("left")
+        # 좌/우: [찾아보기 ...][경로 입력칸(포커스 시 최근 목록 자동 표시)]
+        self._left_model = QStringListModel([])
+        self._right_model = QStringListModel([])
         self._left_browse = self._make_browse_button("left")
-
-        self._right_path = QLineEdit()
-        self._right_path.setPlaceholderText("오른쪽 파일 경로 (Enter로 열기)")
-        self._right_path.setClearButtonEnabled(True)
-        self._right_path.returnPressed.connect(lambda: self._load_path("right"))
-        self._right_recent = self._make_recent_button("right")
+        self._left_path = self._make_path_edit("왼쪽 파일 경로 (Enter로 열기)", "left", self._left_model)
         self._right_browse = self._make_browse_button("right")
+        self._right_path = self._make_path_edit("오른쪽 파일 경로 (Enter로 열기)", "right", self._right_model)
 
         path_row = QHBoxLayout()
         path_row.setContentsMargins(2, 2, 2, 2)
         path_row.setSpacing(2)
-        path_row.addWidget(self._left_path, 1)
-        path_row.addWidget(self._left_recent)
         path_row.addWidget(self._left_browse)
+        path_row.addWidget(self._left_path, 1)
         path_row.addSpacing(6)
-        path_row.addWidget(self._right_path, 1)
-        path_row.addWidget(self._right_recent)
         path_row.addWidget(self._right_browse)
+        path_row.addWidget(self._right_path, 1)
         path_row.addSpacing(self._overview.width() or 14)  # 미니맵 폭만큼 우측 정렬
 
         body = QWidget()
@@ -95,28 +97,24 @@ class FileComparePane(QWidget):
         btn.clicked.connect(lambda: self._open(side))
         return btn
 
-    def _make_recent_button(self, side: str) -> QToolButton:
-        btn = QToolButton()
-        btn.setText("▾")
-        btn.setToolTip("최근 파일")
-        btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        btn.setMenu(QMenu(btn))
-        return btn
+    def _make_path_edit(self, placeholder: str, side: str, model: QStringListModel) -> _PathEdit:
+        edit = _PathEdit()
+        edit.setPlaceholderText(placeholder)
+        edit.setClearButtonEnabled(True)
+        edit.returnPressed.connect(lambda s=side: self._load_path(s))
+        completer = QCompleter(model, edit)
+        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        # 최근 항목 선택 시 바로 로드
+        completer.activated.connect(lambda text, s=side: self._load(s, text))
+        edit.setCompleter(completer)
+        return edit
 
     def set_recent(self, paths: list[str]) -> None:
-        """최근 파일 목록으로 좌/우 드롭다운 메뉴를 갱신한다."""
-        for side, btn in (("left", self._left_recent), ("right", self._right_recent)):
-            menu = QMenu(btn)
-            if not paths:
-                act = menu.addAction("(최근 파일 없음)")
-                act.setEnabled(False)
-            else:
-                for p in paths:
-                    act = menu.addAction(p)
-                    act.triggered.connect(
-                        lambda checked=False, s=side, path=p: self._load(s, path)
-                    )
-            btn.setMenu(menu)
+        """최근 파일 목록을 좌/우 경로칸 자동완성에 반영한다."""
+        self._left_model.setStringList(list(paths))
+        self._right_model.setStringList(list(paths))
 
     # ---------------------------------------------------- AppWindow 공개 API
     def controller(self) -> DiffController:
