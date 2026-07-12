@@ -343,8 +343,15 @@ class AppWindow(QMainWindow):
     def _about(self) -> None:
         from PySide6.QtWidgets import QMessageBox
 
+        from rox_merge import __version__
+
         QMessageBox.information(
-            self, "rox-merge", "rox-merge — 파일·폴더 비교/병합 도구\nAraxis Merge 류의 diff/merge 툴."
+            self,
+            "정보",
+            f"rox-merge {__version__}\n\n"
+            "Araxis Merge 류의 파일·폴더 비교/병합 도구\n"
+            "두 파일이나 폴더를 나란히 비교하고, 차이를 한 방향으로 병합·편집할 수 있습니다.\n\n"
+            "만든 사람: 박상",
         )
 
     # --------------------------------------------------------------- helpers
