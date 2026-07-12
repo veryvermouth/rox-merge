@@ -1,38 +1,83 @@
 # rox-merge
 
-Araxis Merge 류의 파일·폴더 비교/병합 도구 (PySide6 기반).
+Araxis Merge 류의 **파일·폴더 비교/병합 도구** (PySide6 기반). 순수 Python diff 엔진 + 커스텀 페인팅 GUI.
 
-설계/계획은 [docs/PLAN.md](docs/PLAN.md) 참조.
+원래 설계/계획은 [docs/PLAN.md](docs/PLAN.md) 참조. 아래는 현재 구현된 기능 요약이다.
+
+## 실행
+
+```bash
+python -m pip install -e ".[dev]"          # 의존성 + 개발 도구(pytest)
+python -m rox_merge                         # 빈 파일 비교 탭으로 시작
+python -m rox_merge left.py right.py        # 파일 2개 비교 탭
+python -m rox_merge dir_a dir_b             # 폴더 2개 비교 탭
+pytest                                       # 테스트 실행
+```
+
+하나의 창에서 **탭 단위 비교 세션**을 연다. 상단 **메뉴바 + 간단 툴바**의 `새 파일 비교(Ctrl+N)` /
+`새 폴더 비교(Ctrl+D)`로 탭을 계속 추가할 수 있다. 메뉴 항목은 현재 활성 탭에 맞춰 활성/비활성된다.
+
+## 주요 기능
+
+### 파일 비교 (탭)
+- **side-by-side** 뷰(커스텀 페인팅): 라인 정렬 + gap(빈 줄)로 좌/우 행 맞춤, 스크롤 동기화, 미니맵.
+- **색상**(Araxis 라이트 톤): 추가=연한 초록, 삭제=연한 분홍, 변경=따뜻한 크림, 공백만=옅은 회색, 이동=보라. gap 쪽도 종류색으로 강조.
+- **단어 단위(intraline) 강조**, **이동(moved) 블록 탐지**(해시, 최소 3라인) + 좌↔우 연결선.
+- **병합 버튼(→/←)**: 각 차이 블록을 한 방향으로 적용. **Undo/Redo 통합 스택**(편집·병합 공유).
+- **직접 편집**: 커서/키 입력, 텍스트 선택(Shift·드래그·Ctrl+A), 복사/잘라내기/붙여넣기, **한글 등 IME 입력**, 편집 후 150ms debounce 재계산.
+- **경로 바**: 좌/우 각 창 위에 절대 경로 입력칸 + `...` 찾아보기 + 포커스 시 **최근 파일 자동완성 드롭다운**.
+- **저장**: 원본 인코딩·줄바꿈 보존. 빈 버퍼는 다른 이름으로 저장.
+- `새 파일 비교`는 좌→우 파일을 순서대로 고르는 시퀀스로 시작.
+
+### 폴더 비교 (탭)
+- **재귀 비교 엔진**: `동일 / 좌측만 / 우측만 / 내용 다름` 분류.
+- **빠른 비교(크기+mtime)** ↔ **정확 비교(해시)** 토글.
+- **좌/우 대응 트리**: 왼쪽·오른쪽 이름을 같은 행에 표시(들여쓰기·펼침 화살표까지 양쪽 미러), 상태별 색.
+- **다른 항목만** 필터, **차이 있는 곳만** 초기 확장, 전체 펼침/접기, 트리 초기 상태(Ctrl+Shift+0).
+- **여는 방식**: 분할 모드(하단 diff, Esc로 트리 복귀) ↔ 새 탭 모드 토글. 더블클릭한 파일은 **편집 가능한 diff**로 열림.
+
+### 공통
+- **비교 옵션**: 공백 무시 / 대소문자 무시 / 이동 탐지 (파일), 정확 비교 / 다른 항목만 / 새 탭 모드 (폴더).
+- **테마**: 라이트/다크 전역 토글(Fusion 스타일로 메뉴바·툴바·트리까지 함께 전환, OS 테마 무관).
+- **글꼴 크기**: 파일 diff 글꼴(파일 탭·폴더 하단 diff 공유)과 폴더 트리 글꼴을 **따로 관리**. 확대/축소·리셋은 **커서 위치(포커스) 기준**.
+- **설정 저장/복원(QSettings)**: 글꼴 크기, 테마, 비교 옵션, 최근 파일 목록.
+- **큰 파일 가드**: 아주 큰 파일은 이동 탐지 자동 비활성 / diff 생략(플레인)으로 안정성 확보.
+
+## 단축키
+
+| 단축키 | 동작 |
+|---|---|
+| `Ctrl+N` / `Ctrl+D` | 새 파일 비교 / 새 폴더 비교 |
+| `Ctrl+O` / `Ctrl+Shift+O` | (폴더 탭) 왼쪽/오른쪽 폴더 열기 |
+| `Ctrl+S` / `Ctrl+Shift+S` | 저장 / 다른 이름으로 저장 |
+| `Ctrl+Z` / `Ctrl+Shift+Z`·`Ctrl+Y` | 실행 취소 / 다시 실행 |
+| `Ctrl+X` `Ctrl+C` `Ctrl+V` `Ctrl+A` | 잘라내기 / 복사 / 붙여넣기 / 모두 선택 |
+| `Ctrl+1` / `Ctrl+2` | 이전 차이 / 다음 차이 |
+| `Ctrl++`(`Ctrl+=`) / `Ctrl+-` / `Ctrl+0` | 글꼴 확대 / 축소 / 원래 크기(포커스 기준) |
+| `Ctrl+]` / `Ctrl+[` / `Ctrl+Shift+0` | (폴더) 트리 전체 펼침 / 접기 / 초기 상태 |
+| `F5` | (폴더) 새로고침 |
+| `Esc` | (폴더) 하단 diff 닫기 / 폴더 탭으로 |
+| `Ctrl+W` · `Ctrl+F4` / `Ctrl+Q` | 탭 닫기 / 종료 |
 
 ## 패키지 구조
 
 ```
 src/rox_merge/
-  core/       # 순수 Python. UI/Qt 무의존. 데이터 모델·diff 엔진(예정)
-  fileio/     # 파일 I/O: 인코딩·줄바꿈·바이너리 감지
-  app/        # 애플리케이션 계층: 세션/문서 관리, 커맨드(예정)
-  ui/         # PySide6 UI (예정)
-tests/        # pytest 단위 테스트
+  core/       # 순수 Python(Qt 무의존): 데이터 모델, diff 엔진(Myers·정렬·intraline·moved), 폴더 비교
+  fileio/     # 파일 I/O: 인코딩·줄바꿈·바이너리 감지, 읽기/쓰기(바이트 보존)
+  app/        # 애플리케이션 계층: 비교 모델·게이팅, 커맨드(Undo/Redo)
+  ui/         # PySide6 UI: AppWindow(탭·메뉴·툴바), 파일/폴더 패널, DiffView, 컨트롤러, 테마
+tests/        # pytest 단위 테스트 (194개)
 ```
 
-## 개발 환경
-
-```bash
-python -m pip install -e ".[dev]"   # 의존성 + 개발 도구(pytest)
-pytest                               # 테스트 실행
-python -m rox_merge                  # GUI 실행 (선택: 좌/우 파일 경로 2개)
-python -m rox_merge left.py right.py
-python -m rox_merge dir_a dir_b      # 인자가 폴더 2개면 폴더 비교 창
-```
-
-실행 후에는 툴바의 **"파일 비교"/"폴더 비교"**(Ctrl+N / Ctrl+D) 버튼으로 두 모드를 오갈 수 있다.
+핵심 원칙: **Core는 UI/Qt에 의존하지 않아** 화면 없이 단위 테스트로 검증한다.
 
 ## 진행 상황
 
-- [x] Phase 0 — 프로젝트 뼈대, 파일 I/O(인코딩/줄바꿈/바이너리 감지), pytest 셋업
-- [x] Phase 1 — Diff 엔진(Myers 라인 diff, Alignment, 단어 단위 intraline, whitespace 분류, hunk)
-- [x] Phase 2 — 파일 비교 GUI 뷰어(side-by-side, gap/색상/intraline, 스크롤 동기화, 차이 점프, 미니맵, 글꼴 줌, 열기/저장/빈 버퍼 게이팅)
-- [x] Phase 3 — 병합 + 편집: 병합 버튼(→/←) + ApplyHunk 커맨드, 직접 텍스트 편집(커서/키 입력), Undo/Redo 통합 스택, 편집 후 debounce(150ms) 재계산
-- [x] Phase 4 — Moved block 탐지(해시 매칭, 최소 3라인·기본 ON, 전용 보라색 + 연결선, 툴바 토글)
-- [x] Phase 5 — 폴더 비교(재귀 비교 엔진 + 상태 분류, 빠른/정확(해시) 토글, 좌/우 대응 트리, 다른 항목만 필터, 차이 있는 곳만 초기 확장, Ctrl+]/[/0, 분할 모드 ↔ 새 탭 모드 토글, 더블클릭→diff 편집)
-- [ ] Phase 6 — 다듬기
+- [x] Phase 0 — 프로젝트 뼈대, 파일 I/O(인코딩/줄바꿈/바이너리), pytest
+- [x] Phase 1 — Diff 엔진(Myers, Alignment, intraline, whitespace, hunk)
+- [x] Phase 2 — 파일 비교 GUI(side-by-side, 색상/intraline, 스크롤 동기화, 차이 점프, 미니맵)
+- [x] Phase 3 — 병합(→/←) + 직접 편집 + Undo/Redo 통합 스택 + debounce 재계산
+- [x] Phase 4 — Moved block 탐지(보라색 + 연결선, 토글)
+- [x] Phase 5 — 폴더 비교(재귀 엔진, 트리, 빠른/정확, 필터, 분할↔새 탭)
+- [x] Phase 6 — 다듬기: 비교 옵션 UI, 큰 파일 가드, 다크 테마, 메뉴바/툴바, 탭 세션, 경로 바·최근 파일, 설정 저장/복원, 글꼴 관리, 텍스트 선택·IME
