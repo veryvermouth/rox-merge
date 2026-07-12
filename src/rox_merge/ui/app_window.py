@@ -40,7 +40,8 @@ class AppWindow(QMainWindow):
         # 저장된 설정 복원 (폰트/테마/비교 옵션)
         self._settings = QSettings()
         s = self._settings
-        self._font_pt = int(s.value("font_pt", 11))
+        self._file_font_pt = int(s.value("file_font_pt", 11))
+        self._folder_font_pt = int(s.value("folder_font_pt", 11))
         self._dark = s.value("dark", False, type=bool)
         self._default_options = DiffOptions(
             detect_moves=s.value("detect_moves", True, type=bool),
@@ -188,7 +189,7 @@ class AppWindow(QMainWindow):
             pane._set_doc("right", right)
         pane.apply_options(self._default_options)  # 저장된 비교 옵션 + 재계산
         pane.apply_theme(Theme(dark=self._dark))
-        pane.apply_font(self._font_pt)
+        pane.apply_font(self._file_font_pt)
         index = self._tabs.addTab(pane, pane.title())
         pane.title_changed.connect(lambda t, p=pane: self._set_tab_title(p, t))
         pane.status_changed.connect(self.statusBar().showMessage)
@@ -198,7 +199,7 @@ class AppWindow(QMainWindow):
     def add_folder_tab(self, left=None, right=None):
         pane = FolderComparePane()
         pane.apply_theme(Theme(dark=self._dark))
-        pane.apply_font(self._font_pt)
+        pane.apply_font(self._folder_font_pt)
         if self._folder_exact:
             pane.toggle_exact(True)
         index = self._tabs.addTab(pane, pane.title())
@@ -250,19 +251,26 @@ class AppWindow(QMainWindow):
             c.jump(delta)
 
     def _zoom(self, delta: int) -> None:
-        self._font_pt = max(6, min(40, self._font_pt + delta))
+        # 텍스트 비교와 폴더 비교의 글꼴 크기는 따로 관리
+        p = self._pane()
+        if isinstance(p, FileComparePane):
+            self._file_font_pt = max(6, min(40, self._file_font_pt + delta))
+        elif isinstance(p, FolderComparePane):
+            self._folder_font_pt = max(6, min(40, self._folder_font_pt + delta))
         self._apply_font_all()
 
     def _apply_font_all(self) -> None:
         for i in range(self._tabs.count()):
             p = self._tabs.widget(i)
-            if hasattr(p, "apply_font"):
-                p.apply_font(self._font_pt)
+            if isinstance(p, FileComparePane):
+                p.apply_font(self._file_font_pt)
+            elif isinstance(p, FolderComparePane):
+                p.apply_font(self._folder_font_pt)
 
     def _reset0(self) -> None:
         p = self._pane()
         if isinstance(p, FileComparePane):
-            self._font_pt = 11  # 글꼴 원래 크기(전역)
+            self._file_font_pt = 11  # 텍스트 비교 글꼴 원래 크기
             self._apply_font_all()
         elif isinstance(p, FolderComparePane):
             p.reset_expand()
@@ -420,7 +428,8 @@ class AppWindow(QMainWindow):
 
     def closeEvent(self, event):  # noqa: N802 (Qt) — 종료 시 설정 저장
         s = self._settings
-        s.setValue("font_pt", self._font_pt)
+        s.setValue("file_font_pt", self._file_font_pt)
+        s.setValue("folder_font_pt", self._folder_font_pt)
         s.setValue("dark", self._dark)
         s.setValue("detect_moves", self._default_options.detect_moves)
         s.setValue("ignore_whitespace", self._default_options.ignore_whitespace)

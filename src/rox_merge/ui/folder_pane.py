@@ -15,6 +15,8 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QMessageBox,
     QSplitter,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
     QTabBar,
     QTabWidget,
     QTreeWidget,
@@ -47,6 +49,25 @@ _STATUS_COLOR = {
 _ROLE_NODE = Qt.ItemDataRole.UserRole
 
 
+class _RightIndentDelegate(QStyledItemDelegate):
+    """오른쪽 열(1열)을 트리 depth만큼 들여써서 왼쪽 트리와 정렬을 맞춘다."""
+
+    def __init__(self, tree: QTreeWidget):
+        super().__init__(tree)
+        self._tree = tree
+
+    def paint(self, painter, option, index):  # noqa: N802 (Qt)
+        depth = 0
+        parent = index.parent()
+        while parent.isValid():
+            depth += 1
+            parent = parent.parent()
+        indent = (depth + 1) * self._tree.indentation()
+        opt = QStyleOptionViewItem(option)
+        opt.rect = option.rect.adjusted(indent, 0, 0, 0)
+        super().paint(painter, opt, index)
+
+
 class FolderComparePane(QWidget):
     title_changed = Signal(str)
 
@@ -67,6 +88,7 @@ class FolderComparePane(QWidget):
         header = self._tree.header()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self._tree.setItemDelegateForColumn(1, _RightIndentDelegate(self._tree))
         self._tree.itemDoubleClicked.connect(self._on_item_double_clicked)
 
         self._diff = DiffView()
