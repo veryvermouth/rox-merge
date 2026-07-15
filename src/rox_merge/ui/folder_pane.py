@@ -8,9 +8,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QPoint, QRect, Qt, Signal
+from PySide6.QtCore import QPoint, QRect, QStringListModel, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QKeySequence, QPainter, QPalette, QPolygon, QShortcut
 from PySide6.QtWidgets import (
+    QCompleter,
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
@@ -41,6 +42,7 @@ from rox_merge.core.folder_compare import (
 from rox_merge.fileio import BinaryFileError, new_document, read_document, write_document
 from rox_merge.ui.diff_controller import DiffController
 from rox_merge.ui.diff_view import DiffView
+from rox_merge.ui.file_pane import _PathEdit  # 포커스 시 최근 목록 표시하는 경로 입력칸
 from rox_merge.ui.theme import Theme
 
 _STATUS_COLOR = {
@@ -121,6 +123,7 @@ class _FolderTree(QTreeWidget):
 
 class FolderComparePane(QWidget):
     title_changed = Signal(str)
+    folder_opened = Signal(str)  # 폴더를 열면 경로를 알림(최근 폴더 목록용)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -236,6 +239,8 @@ class FolderComparePane(QWidget):
         self._left_root = Path(left)
         self._right_root = Path(right)
         self._refresh()
+        self.folder_opened.emit(str(self._left_root))
+        self.folder_opened.emit(str(self._right_root))
 
     def prompt_roots(self) -> None:
         left = QFileDialog.getExistingDirectory(self.window(), "왼쪽 폴더 선택")
@@ -254,19 +259,15 @@ class FolderComparePane(QWidget):
     # --------------------------------------------------------------- slots
     # -------------------------------------------------------- 폴더 경로 바
     def _build_path_row(self) -> QHBoxLayout:
-        self._left_dir = QLineEdit()
-        self._left_dir.setPlaceholderText("왼쪽 폴더 경로 (Enter로 열기)")
-        self._left_dir.setClearButtonEnabled(True)
-        self._left_dir.returnPressed.connect(lambda: self._load_dir_path("left"))
+        self._left_dir_model = QStringListModel([])
+        self._right_dir_model = QStringListModel([])
+        self._left_dir = self._make_dir_edit("왼쪽 폴더 경로 (Enter로 열기)", "left", self._left_dir_model)
         left_browse = QToolButton()
         left_browse.setText("...")
         left_browse.setToolTip("왼쪽 폴더 찾아보기")
         left_browse.clicked.connect(lambda: self._pick_root("left"))
 
-        self._right_dir = QLineEdit()
-        self._right_dir.setPlaceholderText("오른쪽 폴더 경로 (Enter로 열기)")
-        self._right_dir.setClearButtonEnabled(True)
-        self._right_dir.returnPressed.connect(lambda: self._load_dir_path("right"))
+        self._right_dir = self._make_dir_edit("오른쪽 폴더 경로 (Enter로 열기)", "right", self._right_dir_model)
         right_browse = QToolButton()
         right_browse.setText("...")
         right_browse.setToolTip("오른쪽 폴더 찾아보기")
@@ -281,6 +282,24 @@ class FolderComparePane(QWidget):
         row.addWidget(right_browse)
         row.addWidget(self._right_dir, 1)
         return row
+
+    def _make_dir_edit(self, placeholder: str, side: str, model: QStringListModel) -> _PathEdit:
+        edit = _PathEdit()
+        edit.setPlaceholderText(placeholder)
+        edit.setClearButtonEnabled(True)
+        edit.returnPressed.connect(lambda s=side: self._load_dir_path(s))
+        completer = QCompleter(model, edit)
+        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        completer.activated.connect(lambda text, s=side: self._set_root(s, text))
+        edit.setCompleter(completer)
+        return edit
+
+    def set_recent_dirs(self, paths: list[str]) -> None:
+        """최근 폴더 목록을 좌/우 경로칸 자동완성에 반영한다."""
+        self._left_dir_model.setStringList(list(paths))
+        self._right_dir_model.setStringList(list(paths))
 
     def _load_dir_path(self, side: str) -> None:
         edit = self._left_dir if side == "left" else self._right_dir
@@ -298,6 +317,7 @@ class FolderComparePane(QWidget):
         else:
             self._right_root = p
         self._refresh()
+        self.folder_opened.emit(str(p))
 
     def _sync_dir_paths(self) -> None:
         if not self._left_dir.hasFocus():
