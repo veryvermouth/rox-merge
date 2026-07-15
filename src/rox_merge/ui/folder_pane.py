@@ -9,7 +9,16 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QPoint, QRect, QStringListModel, Qt, Signal
-from PySide6.QtGui import QBrush, QColor, QKeySequence, QPainter, QPalette, QPolygon, QShortcut
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+    QFont,
+    QKeySequence,
+    QPainter,
+    QPalette,
+    QPolygon,
+    QShortcut,
+)
 from PySide6.QtWidgets import (
     QCompleter,
     QFileDialog,
@@ -44,6 +53,9 @@ from rox_merge.ui.diff_controller import DiffController
 from rox_merge.ui.diff_view import DiffView
 from rox_merge.ui.file_pane import _PathEdit  # 포커스 시 최근 목록 표시하는 경로 입력칸
 from rox_merge.ui.theme import Theme
+
+# 폴더 트리(파일/폴더 이름) 글꼴 — 한글+영문 가독성이 좋은 맑은 고딕
+TREE_FONT_FAMILY = "Malgun Gothic"
 
 _STATUS_COLOR = {
     SAME: QColor(120, 120, 120),
@@ -192,9 +204,8 @@ class FolderComparePane(QWidget):
             view.set_font_point_size(pt)
 
     def apply_tree_font(self, pt: int) -> None:
-        """폴더 트리 글꼴."""
-        f = self._tree.font()
-        f.setPointSize(pt)
+        """폴더 트리 글꼴 — 파일/폴더 이름 가독성을 위해 맑은 고딕 사용."""
+        f = QFont(TREE_FONT_FAMILY, pt)
         self._tree.setFont(f)
 
     def controller(self) -> DiffController:
