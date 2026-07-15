@@ -12,13 +12,16 @@ from PySide6.QtCore import QPoint, QRect, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QKeySequence, QPainter, QPalette, QPolygon, QShortcut
 from PySide6.QtWidgets import (
     QFileDialog,
+    QHBoxLayout,
     QHeaderView,
+    QLineEdit,
     QMessageBox,
     QSplitter,
     QStyledItemDelegate,
     QStyleOptionViewItem,
     QTabBar,
     QTabWidget,
+    QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -147,10 +150,18 @@ class FolderComparePane(QWidget):
         self._folder_page.addWidget(self._tree)
         self._folder_page.addWidget(self._diff)
 
+        # 폴더 탭 = [좌/우 폴더 경로 바] + [트리 + 하단 diff]
+        folder_container = QWidget()
+        fbox = QVBoxLayout(folder_container)
+        fbox.setContentsMargins(0, 0, 0, 0)
+        fbox.setSpacing(0)
+        fbox.addLayout(self._build_path_row())
+        fbox.addWidget(self._folder_page, 1)
+
         self._tabs = QTabWidget()
         self._tabs.setTabsClosable(True)
         self._tabs.tabCloseRequested.connect(self._close_tab)
-        self._tabs.addTab(self._folder_page, "폴더")
+        self._tabs.addTab(folder_container, "폴더")
         self._tabs.tabBar().setTabButton(0, QTabBar.ButtonPosition.RightSide, None)
 
         layout = QVBoxLayout(self)
@@ -241,6 +252,59 @@ class FolderComparePane(QWidget):
         return "폴더 비교"
 
     # --------------------------------------------------------------- slots
+    # -------------------------------------------------------- 폴더 경로 바
+    def _build_path_row(self) -> QHBoxLayout:
+        self._left_dir = QLineEdit()
+        self._left_dir.setPlaceholderText("왼쪽 폴더 경로 (Enter로 열기)")
+        self._left_dir.setClearButtonEnabled(True)
+        self._left_dir.returnPressed.connect(lambda: self._load_dir_path("left"))
+        left_browse = QToolButton()
+        left_browse.setText("...")
+        left_browse.setToolTip("왼쪽 폴더 찾아보기")
+        left_browse.clicked.connect(lambda: self._pick_root("left"))
+
+        self._right_dir = QLineEdit()
+        self._right_dir.setPlaceholderText("오른쪽 폴더 경로 (Enter로 열기)")
+        self._right_dir.setClearButtonEnabled(True)
+        self._right_dir.returnPressed.connect(lambda: self._load_dir_path("right"))
+        right_browse = QToolButton()
+        right_browse.setText("...")
+        right_browse.setToolTip("오른쪽 폴더 찾아보기")
+        right_browse.clicked.connect(lambda: self._pick_root("right"))
+
+        row = QHBoxLayout()
+        row.setContentsMargins(2, 2, 2, 2)
+        row.setSpacing(2)
+        row.addWidget(left_browse)
+        row.addWidget(self._left_dir, 1)
+        row.addSpacing(6)
+        row.addWidget(right_browse)
+        row.addWidget(self._right_dir, 1)
+        return row
+
+    def _load_dir_path(self, side: str) -> None:
+        edit = self._left_dir if side == "left" else self._right_dir
+        self._set_root(side, edit.text().strip())
+
+    def _set_root(self, side: str, path: str) -> None:
+        if not path:
+            return
+        p = Path(path)
+        if not p.is_dir():
+            QMessageBox.warning(self.window(), "폴더 아님", f"폴더가 아닙니다:\n{path}")
+            return
+        if side == "left":
+            self._left_root = p
+        else:
+            self._right_root = p
+        self._refresh()
+
+    def _sync_dir_paths(self) -> None:
+        if not self._left_dir.hasFocus():
+            self._left_dir.setText(str(self._left_root) if self._left_root else "")
+        if not self._right_dir.hasFocus():
+            self._right_dir.setText(str(self._right_root) if self._right_root else "")
+
     # ------------------------------------------------------ 드래그&드롭(폴더)
     def _dropped_dirs(self, event) -> list[str]:
         md = event.mimeData()
@@ -267,26 +331,16 @@ class FolderComparePane(QWidget):
             self.set_roots(dirs[0], dirs[1])
         else:
             side = "left" if event.position().x() < self.width() / 2 else "right"
-            if side == "left":
-                self._left_root = Path(dirs[0])
-            else:
-                self._right_root = Path(dirs[0])
-            if self._left_root and self._right_root:
-                self._refresh()
+            self._set_root(side, dirs[0])
         event.acceptProposedAction()
 
     def _pick_root(self, side: str) -> None:
         path = QFileDialog.getExistingDirectory(self.window(), f"{side} 폴더 선택")
-        if not path:
-            return
-        if side == "left":
-            self._left_root = Path(path)
-        else:
-            self._right_root = Path(path)
-        if self._left_root and self._right_root:
-            self._refresh()
+        if path:
+            self._set_root(side, path)
 
     def _refresh(self) -> None:
+        self._sync_dir_paths()
         if not (self._left_root and self._right_root):
             return
         root = compare_dirs(self._left_root, self._right_root, self._mode)
