@@ -49,6 +49,7 @@ class FileComparePane(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setAcceptDrops(True)  # 파일 드래그&드롭
         self._view = DiffView()
         self._overview = OverviewBar()
         self._ctl = DiffController(self._view, DiffOptions(), self)
@@ -150,6 +151,36 @@ class FileComparePane(QWidget):
         if not right:
             return
         self._load("right", right)
+
+    # ------------------------------------------------------- 드래그&드롭(파일)
+    def _dropped_files(self, event) -> list[str]:
+        md = event.mimeData()
+        if not md.hasUrls():
+            return []
+        return [
+            u.toLocalFile() for u in md.urls()
+            if u.isLocalFile() and os.path.isfile(u.toLocalFile())
+        ]
+
+    def dragEnterEvent(self, event):  # noqa: N802 (Qt)
+        if self._dropped_files(event):
+            event.acceptProposedAction()
+
+    def dragMoveEvent(self, event):  # noqa: N802 (Qt)
+        if self._dropped_files(event):
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):  # noqa: N802 (Qt)
+        files = self._dropped_files(event)
+        if not files:
+            return
+        if len(files) >= 2:
+            self._load("left", files[0])
+            self._load("right", files[1])
+        else:
+            side = "left" if event.position().x() < self.width() / 2 else "right"
+            self._load(side, files[0])
+        event.acceptProposedAction()
 
     def _open(self, side: str) -> None:
         path, _ = QFileDialog.getOpenFileName(self.window(), f"{side} 파일 열기")

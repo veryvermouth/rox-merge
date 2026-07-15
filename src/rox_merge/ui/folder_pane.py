@@ -121,6 +121,7 @@ class FolderComparePane(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setAcceptDrops(True)  # 폴더 드래그&드롭
         self._left_root: Path | None = None
         self._right_root: Path | None = None
         self._mode = MODE_FAST
@@ -240,6 +241,40 @@ class FolderComparePane(QWidget):
         return "폴더 비교"
 
     # --------------------------------------------------------------- slots
+    # ------------------------------------------------------ 드래그&드롭(폴더)
+    def _dropped_dirs(self, event) -> list[str]:
+        md = event.mimeData()
+        if not md.hasUrls():
+            return []
+        return [
+            u.toLocalFile() for u in md.urls()
+            if u.isLocalFile() and Path(u.toLocalFile()).is_dir()
+        ]
+
+    def dragEnterEvent(self, event):  # noqa: N802 (Qt)
+        if self._dropped_dirs(event):
+            event.acceptProposedAction()
+
+    def dragMoveEvent(self, event):  # noqa: N802 (Qt)
+        if self._dropped_dirs(event):
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):  # noqa: N802 (Qt)
+        dirs = self._dropped_dirs(event)
+        if not dirs:
+            return
+        if len(dirs) >= 2:
+            self.set_roots(dirs[0], dirs[1])
+        else:
+            side = "left" if event.position().x() < self.width() / 2 else "right"
+            if side == "left":
+                self._left_root = Path(dirs[0])
+            else:
+                self._right_root = Path(dirs[0])
+            if self._left_root and self._right_root:
+                self._refresh()
+        event.acceptProposedAction()
+
     def _pick_root(self, side: str) -> None:
         path = QFileDialog.getExistingDirectory(self.window(), f"{side} 폴더 선택")
         if not path:
