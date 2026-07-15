@@ -163,6 +163,7 @@ class FolderComparePane(QWidget):
 
         self._tabs = QTabWidget()
         self._tabs.setTabsClosable(True)
+        self._tabs.setTabBarAutoHide(True)  # 탭 1개(폴더)뿐이면 탭바 숨김
         self._tabs.tabCloseRequested.connect(self._close_tab)
         self._tabs.addTab(folder_container, "폴더")
         self._tabs.tabBar().setTabButton(0, QTabBar.ButtonPosition.RightSide, None)

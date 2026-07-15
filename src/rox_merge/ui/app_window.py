@@ -9,9 +9,26 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from PySide6.QtCore import QSettings
-from PySide6.QtGui import QAction, QKeySequence, QPalette
-from PySide6.QtWidgets import QApplication, QMainWindow, QTabWidget, QToolBar
+from PySide6.QtCore import QSettings, Qt
+from PySide6.QtGui import (
+    QAction,
+    QBrush,
+    QColor,
+    QFont,
+    QKeySequence,
+    QLinearGradient,
+    QPainter,
+    QPalette,
+    QPen,
+)
+from PySide6.QtWidgets import (
+    QApplication,
+    QMainWindow,
+    QStackedWidget,
+    QTabWidget,
+    QToolBar,
+    QWidget,
+)
 
 from rox_merge.core.diff import DiffOptions
 from rox_merge.core.document import Document
@@ -19,6 +36,43 @@ from rox_merge.ui.diff_view import DiffView
 from rox_merge.ui.file_pane import FileComparePane
 from rox_merge.ui.folder_pane import FolderComparePane
 from rox_merge.ui.theme import Theme, dark_palette, light_palette
+
+
+class _WelcomeWidget(QWidget):
+    """모든 탭을 닫았을 때 보이는 빈 화면 — 'ROX-MERGE' 로고 타이틀."""
+
+    def paintEvent(self, event):  # noqa: N802 (Qt)
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+        rect = self.rect()
+        p.fillRect(rect, self.palette().color(QPalette.ColorRole.Base))
+
+        # 타이틀 — 큰 볼드 + 자간 + 파랑→보라 그라데이션
+        title = "ROX-MERGE"
+        f = QFont("Segoe UI", 60)
+        f.setBold(True)
+        f.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 8)
+        p.setFont(f)
+        grad = QLinearGradient(rect.width() * 0.28, 0, rect.width() * 0.72, 0)
+        grad.setColorAt(0.0, QColor(74, 144, 217))
+        grad.setColorAt(1.0, QColor(155, 89, 182))
+        pen = QPen()
+        pen.setBrush(QBrush(grad))
+        p.setPen(pen)
+        p.drawText(rect.adjusted(0, -46, 0, -46), Qt.AlignmentFlag.AlignCenter, title)
+
+        # 부제 — 팔레트 텍스트색(테마 연동), 살짝 흐리게
+        sub_color = self.palette().color(QPalette.ColorRole.WindowText)
+        sub_color.setAlpha(150)
+        p.setPen(sub_color)
+        p.setFont(QFont("Segoe UI", 13))
+        p.drawText(
+            rect.adjusted(0, 64, 0, 64),
+            Qt.AlignmentFlag.AlignCenter,
+            "파일·폴더 비교/병합 도구\n\n＋ 새 파일 비교 (Ctrl+N)      ＋ 새 폴더 비교 (Ctrl+D)",
+        )
+        p.end()
 
 
 class AppWindow(QMainWindow):
@@ -32,7 +86,13 @@ class AppWindow(QMainWindow):
         self._tabs.setMovable(True)
         self._tabs.tabCloseRequested.connect(self._close_tab)
         self._tabs.currentChanged.connect(self._sync)
-        self.setCentralWidget(self._tabs)
+
+        # 탭이 하나도 없을 때 보여줄 웰컴 화면과 탭 위젯을 스택으로 전환
+        self._welcome = _WelcomeWidget()
+        self._stack = QStackedWidget()
+        self._stack.addWidget(self._welcome)
+        self._stack.addWidget(self._tabs)
+        self.setCentralWidget(self._stack)
 
         self._file_only: list[QAction] = []
         self._folder_only: list[QAction] = []
@@ -200,6 +260,7 @@ class AppWindow(QMainWindow):
         pane.title_changed.connect(lambda t, p=pane: self._set_tab_title(p, t))
         pane.status_changed.connect(self.statusBar().showMessage)
         self._tabs.setCurrentIndex(index)
+        self._update_view()
         return pane
 
     def add_folder_tab(self, left=None, right=None):
@@ -214,6 +275,7 @@ class AppWindow(QMainWindow):
         index = self._tabs.addTab(pane, pane.title())
         pane.title_changed.connect(lambda t, p=pane: self._set_tab_title(p, t))
         self._tabs.setCurrentIndex(index)
+        self._update_view()
         if left and right:
             pane.set_roots(left, right)
         else:
@@ -351,6 +413,7 @@ class AppWindow(QMainWindow):
             app.setStyle("Fusion")
             app.setPalette(dark_palette() if on else light_palette())
         self._apply_tab_style()  # 탭 스타일시트도 새 팔레트 색으로 갱신
+        self._welcome.update()   # 웰컴 화면도 새 테마색으로 다시 칠함
         for i in range(self._tabs.count()):
             pane = self._tabs.widget(i)
             if hasattr(pane, "apply_theme"):
@@ -469,8 +532,11 @@ class AppWindow(QMainWindow):
         self._tabs.removeTab(index)
         if widget is not None:
             widget.deleteLater()
-        if self._tabs.count() == 0:
-            self.add_file_tab()  # 최소 한 탭 유지
+        self._update_view()  # 탭 0개면 웰컴 화면 표시
+
+    def _update_view(self) -> None:
+        """탭이 있으면 탭 위젯을, 하나도 없으면 웰컴 화면을 보여준다."""
+        self._stack.setCurrentWidget(self._tabs if self._tabs.count() > 0 else self._welcome)
 
     def closeEvent(self, event):  # noqa: N802 (Qt) — 종료 시 설정 저장
         s = self._settings
