@@ -207,6 +207,7 @@ class AppWindow(QMainWindow):
 
         # --- 도움말
         m = mb.addMenu("도움말(&H)")
+        m.addAction(self._mk("단축키", "F1", self._shortcuts))
         m.addAction(self._mk("정보", None, self._about))
 
         # --- 툴바 (자주 쓰는 것만, 같은 액션 재사용)
@@ -469,6 +470,75 @@ class AppWindow(QMainWindow):
             p = self._tabs.widget(i)
             if isinstance(p, FolderComparePane):
                 p.set_recent_dirs(self._recent_dirs)
+
+    def _shortcuts(self) -> None:
+        """현재 단축키 목록과 설명을 보여주는 도움말 창."""
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QTextBrowser, QVBoxLayout
+
+        sections = [
+            ("파일", [
+                ("Ctrl+N", "새 파일 비교"),
+                ("Ctrl+D", "새 폴더 비교"),
+                ("Ctrl+O / Ctrl+Shift+O", "(폴더) 왼쪽 / 오른쪽 폴더 열기"),
+                ("Ctrl+S / Ctrl+Shift+S", "저장 / 다른 이름으로 저장"),
+                ("Ctrl+W · Ctrl+F4", "탭 닫기"),
+                ("Ctrl+Q", "종료"),
+            ]),
+            ("편집 (포커스된 편집창 대상)", [
+                ("Ctrl+Z", "실행 취소"),
+                ("Ctrl+Shift+Z · Ctrl+Y", "다시 실행"),
+                ("Ctrl+X / Ctrl+C / Ctrl+V", "잘라내기 / 복사 / 붙여넣기"),
+                ("Ctrl+A", "모두 선택"),
+            ]),
+            ("보기", [
+                ("Ctrl+1 / Ctrl+2", "이전 차이 / 다음 차이"),
+                ("Ctrl++ (Ctrl+=) / Ctrl+-", "글꼴 확대 / 축소 (포커스 기준, 1pt씩)"),
+                ("Ctrl+0", "글꼴 원래 크기 (파일 11pt / 트리 10pt)"),
+            ]),
+            ("폴더 비교", [
+                ("Ctrl+] / Ctrl+[", "트리 전체 펼침 / 전체 접기"),
+                ("Ctrl+Shift+0", "트리 초기 상태"),
+                ("F5", "새로고침"),
+                ("Esc", "하단 diff 닫고 폴더 탭으로"),
+            ]),
+            ("병합 (파일 비교)", [
+                ("→ / ← 버튼", "차이 블록을 오른쪽/왼쪽으로 병합 (각 블록 사이 버튼 클릭)"),
+            ]),
+        ]
+
+        pal = self.palette()
+        accent = pal.color(QPalette.ColorRole.Highlight).name()
+        key_bg = pal.color(QPalette.ColorRole.AlternateBase).name()
+        rows = []
+        for title, items in sections:
+            rows.append(
+                f'<tr><td colspan="2" style="padding:12px 0 4px;">'
+                f'<b style="color:{accent}; font-size:14px;">{title}</b></td></tr>'
+            )
+            for keys, desc in items:
+                rows.append(
+                    "<tr>"
+                    f'<td style="padding:3px 14px 3px 4px; white-space:nowrap;">'
+                    f'<code style="background:{key_bg}; padding:1px 6px; border-radius:3px;">{keys}</code></td>'
+                    f'<td style="padding:3px 0;">{desc}</td></tr>'
+                )
+        html = (
+            '<table style="border-collapse:collapse; font-size:13px;">'
+            f'{"".join(rows)}</table>'
+        )
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("단축키")
+        dlg.resize(480, 560)
+        lay = QVBoxLayout(dlg)
+        view = QTextBrowser()
+        view.setHtml(html)
+        lay.addWidget(view)
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        btns.rejected.connect(dlg.reject)
+        btns.accepted.connect(dlg.accept)
+        lay.addWidget(btns)
+        dlg.exec()
 
     def _about(self) -> None:
         from PySide6.QtWidgets import QMessageBox
