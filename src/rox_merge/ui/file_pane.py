@@ -88,6 +88,11 @@ class FileComparePane(QWidget):
         layout.addLayout(path_row)
         layout.addWidget(body, 1)
 
+        # 외부(디스크) 변경 감지용: 측별 기준 지문 + '무시' 지문 + 모달 재진입 가드
+        self._disk_sig: dict[str, tuple[int, int] | None] = {"left": None, "right": None}
+        self._ignored_sig: dict[str, tuple[int, int] | None] = {"left": None, "right": None}
+        self._prompting = False
+
         self._ctl.recompute()
 
     # --------------------------------------------------------- 경로바 위젯
@@ -204,6 +209,7 @@ class FileComparePane(QWidget):
             QMessageBox.critical(self.window(), "열기 실패", str(exc))
             return
         self._ctl.set_document(side, doc)
+        self._snapshot_side(side)
         if doc.path:
             self.file_opened.emit(doc.path)
 
@@ -221,7 +227,105 @@ class FileComparePane(QWidget):
         except OSError as exc:
             QMessageBox.critical(self.window(), "저장 실패", str(exc))
             return
+        self._snapshot_side(side)  # 우리 저장으로 바뀐 mtime을 기준선에 반영(자기 저장 오탐 방지)
         self._emit_title()
+
+    # ------------------------------------------------ 외부(디스크) 변경 감지/재로드
+    def _file_sig(self, path: str | None) -> tuple[int, int] | None:
+        """파일의 (mtime_ns, size) 지문. 경로 없음·접근 불가면 None."""
+        if not path:
+            return None
+        try:
+            st = os.stat(path)
+        except OSError:
+            return None
+        return (st.st_mtime_ns, st.st_size)
+
+    def _doc(self, side: str) -> Document:
+        return self._ctl.left if side == "left" else self._ctl.right
+
+    def _snapshot_side(self, side: str) -> None:
+        """현재 버퍼가 반영하는 디스크 상태를 기준선으로 저장(무시 상태 해제)."""
+        self._disk_sig[side] = self._file_sig(self._doc(side).path)
+        self._ignored_sig[side] = None
+
+    def _externally_changed_sides(self) -> list[str]:
+        """load/save 이후 디스크에서 바뀐(그리고 아직 '무시'하지 않은) 측 목록."""
+        changed: list[str] = []
+        for side in ("left", "right"):
+            base = self._disk_sig.get(side)
+            path = self._doc(side).path
+            if not path or base is None:
+                continue
+            cur = self._file_sig(path)
+            if cur is None:
+                continue  # 삭제/접근 불가는 이번 범위에서 알리지 않음
+            if cur != base and cur != self._ignored_sig.get(side):
+                changed.append(side)
+        return changed
+
+    def _reload_sides(self, sides: list[str]) -> None:
+        for side in sides:
+            path = self._doc(side).path
+            if not path:
+                continue
+            try:
+                new = read_document(path)
+            except BinaryFileError as exc:
+                QMessageBox.warning(self.window(), "바이너리 파일", str(exc))
+                continue
+            except OSError as exc:
+                QMessageBox.critical(self.window(), "열기 실패", str(exc))
+                continue
+            self._ctl.set_document(side, new)
+            self._snapshot_side(side)
+
+    def check_external_changes(self) -> None:
+        """창 활성화·탭 전환 시 호출: 디스크가 바뀌었으면 모달로 재로드 여부를 묻는다."""
+        if self._prompting:
+            return
+        sides = self._externally_changed_sides()
+        if not sides:
+            return
+        self._prompting = True
+        try:
+            names = ", ".join(os.path.basename(self._doc(s).path or "") for s in sides)
+            box = QMessageBox(self.window())
+            box.setIcon(QMessageBox.Icon.Warning)
+            box.setWindowTitle("파일이 디스크에서 변경됨")
+            box.setText(
+                f"다음 파일이 외부에서 변경되었습니다:\n{names}\n\n"
+                "다시 불러올까요? (저장하지 않은 편집은 사라집니다)"
+            )
+            reload_btn = box.addButton("다시 불러오기", QMessageBox.ButtonRole.AcceptRole)
+            box.addButton("무시", QMessageBox.ButtonRole.RejectRole)
+            box.exec()
+            if box.clickedButton() is reload_btn:
+                self._reload_sides(sides)
+            else:
+                for side in sides:  # '무시'는 이 상태를 다음 변경 때까지 유지
+                    self._ignored_sig[side] = self._file_sig(self._doc(side).path)
+        finally:
+            self._prompting = False
+
+    def reload_from_disk(self) -> None:
+        """F5: 좌/우 파일을 디스크에서 다시 로드. 미저장 편집이 있으면 확인 후 진행."""
+        sides = [s for s in ("left", "right") if self._doc(s).path]
+        if not sides:
+            return
+        if any(self._doc(s).dirty for s in sides) and not self._confirm_reload_discard():
+            return
+        self._reload_sides(sides)
+
+    def _confirm_reload_discard(self) -> bool:
+        box = QMessageBox(self.window())
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("저장하지 않은 변경")
+        box.setText("저장하지 않은 편집이 있습니다.\n디스크 내용으로 다시 불러올까요? (편집 사라짐)")
+        ok = box.addButton("다시 불러오기", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("취소", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        return box.clickedButton() is ok
 
     def _toggle_moves(self, enabled: bool) -> None:
         self._ctl.set_options(replace(self._ctl.options, detect_moves=enabled))
@@ -262,6 +366,7 @@ class FileComparePane(QWidget):
             self._ctl.left = doc
         else:
             self._ctl.right = doc
+        self._snapshot_side(side)  # CLI/외부에서 넣은 문서도 외부 변경 감지 기준선 설정
 
     def _recompute(self) -> None:
         self._ctl.recompute()

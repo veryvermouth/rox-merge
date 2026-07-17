@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from PySide6.QtCore import QSettings, Qt
+from PySide6.QtCore import QEvent, QSettings, Qt
 from PySide6.QtGui import (
     QAction,
     QBrush,
@@ -86,6 +86,7 @@ class AppWindow(QMainWindow):
         self._tabs.setMovable(True)
         self._tabs.tabCloseRequested.connect(self._close_tab)
         self._tabs.currentChanged.connect(self._sync)
+        self._tabs.currentChanged.connect(lambda *_: self._check_external())  # 탭 전환 시 외부 변경 확인
 
         # 탭이 하나도 없을 때 보여줄 웰컴 화면과 탭 위젯을 스택으로 전환
         self._welcome = _WelcomeWidget()
@@ -111,6 +112,7 @@ class AppWindow(QMainWindow):
         self._folder_exact = s.value("folder_exact", False, type=bool)
         self._recent = [str(p) for p in (s.value("recent", []) or [])][:15]
         self._recent_dirs = [str(p) for p in (s.value("recent_dirs", []) or [])][:15]
+        self._detect_external = s.value("detect_external", True, type=bool)  # 외부 변경 감지
 
         # 라이트/다크 모두 Fusion 스타일 + 명시적 팔레트로 고정(OS 테마 무관).
         _app = QApplication.instance()
@@ -182,6 +184,8 @@ class AppWindow(QMainWindow):
         m.addSeparator()
         self._act_dark = self._mk("다크 테마", None, self._toggle_dark, checkable=True)
         m.addAction(self._act_dark)
+        self._act_detect_ext = self._mk("외부 변경 감지", None, self._toggle_detect_external, checkable=True)
+        m.addAction(self._act_detect_ext)
         m.addSeparator()
         self._act_expand = self._mk("전체 펼침", "Ctrl+]", self._expand_all, folder_only=True)
         self._act_collapse = self._mk("전체 접기", "Ctrl+[", self._collapse_all, folder_only=True)
@@ -201,7 +205,7 @@ class AppWindow(QMainWindow):
         self._act_exact = self._mk("정확 비교(해시)", None, self._toggle_exact, checkable=True, folder_only=True)
         self._act_filter = self._mk("다른 항목만", None, self._toggle_filter, checkable=True, folder_only=True)
         self._act_tabmode = self._mk("새 탭 모드", None, self._toggle_tabmode, checkable=True, folder_only=True)
-        a_refresh = self._mk("새로고침", "F5", self._refresh, folder_only=True)
+        a_refresh = self._mk("새로고침(디스크에서 다시 로드)", "F5", self._refresh)
         for a in (self._act_exact, self._act_filter, self._act_tabmode, a_refresh):
             m.addAction(a)
 
@@ -440,6 +444,24 @@ class AppWindow(QMainWindow):
         p = self._pane()
         if isinstance(p, FolderComparePane):
             p.refresh()
+        elif isinstance(p, FileComparePane):
+            p.reload_from_disk()  # F5: 디스크에서 다시 로드(dirty면 확인 후)
+
+    def _check_external(self) -> None:
+        """창 활성화·탭 전환 시 현재 파일 탭의 외부(디스크) 변경을 확인."""
+        if not self._detect_external:
+            return
+        p = self._pane()
+        if isinstance(p, FileComparePane):
+            p.check_external_changes()
+
+    def _toggle_detect_external(self, on: bool) -> None:
+        self._detect_external = on
+
+    def event(self, e):  # noqa: N802 (Qt) — 창이 활성화될 때 외부 변경 확인
+        if e.type() == QEvent.Type.WindowActivate:
+            self._check_external()
+        return super().event(e)
 
     def _expand_all(self) -> None:
         p = self._pane()
@@ -573,6 +595,7 @@ class AppWindow(QMainWindow):
             self._set_check(self._act_filter, p.is_filter())
             self._set_check(self._act_tabmode, p.is_tab_mode())
         self._set_check(self._act_dark, self._dark)  # 다크는 전역
+        self._set_check(self._act_detect_ext, self._detect_external)  # 외부 변경 감지는 전역
         self._sync_window_title()
 
     @staticmethod
@@ -619,4 +642,5 @@ class AppWindow(QMainWindow):
         s.setValue("folder_exact", self._folder_exact)
         s.setValue("recent", self._recent)
         s.setValue("recent_dirs", self._recent_dirs)
+        s.setValue("detect_external", self._detect_external)
         super().closeEvent(event)

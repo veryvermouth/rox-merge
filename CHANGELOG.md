@@ -3,6 +3,18 @@
 이 프로젝트의 주요 변경 사항을 기록한다. 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를
 따르고, 버전은 [유의적 버전](https://semver.org/lang/ko/)을 지향한다.
 
+## [Unreleased]
+
+### 추가
+- **외부(디스크) 변경 감지**(파일 비교): 창 활성화·탭 전환 시 좌/우 파일의 디스크 변경(mtime·size)을 확인해 모달로 알리고, 동의하면 다시 로드. "무시"는 다음 변경까지 유지. 보기 메뉴 **"외부 변경 감지"** 토글(기본 켜짐, 설정 저장).
+- **examples**: Perforce 워크스페이스 뷰 diff 예시(`perforce_workspace_view_left/right.txt`).
+
+### 변경
+- **F5 동작 확장**: 폴더 탭은 새로고침 시 하단 파일 diff도 닫음. 파일 탭에서도 F5로 디스크에서 다시 로드(미저장 편집 있으면 확인 후).
+
+### 성능
+- 변경 블록 라인 짝짓기 유사도 계산을 순수 파이썬 문자 LCS → 공통 접두/접미 정확 매칭 + `SequenceMatcher.quick_ratio`(C)로 교체. 전 줄 변경 케이스에서 약 58배 단축(≈5,300ms→91ms).
+
 ## [0.2.0]
 
 ### 추가
