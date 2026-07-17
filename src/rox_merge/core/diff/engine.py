@@ -9,6 +9,7 @@ moved 블록 탐지(PLAN §4.3)는 Phase 4에서 추가한다.
 from __future__ import annotations
 
 import re
+from difflib import SequenceMatcher
 
 from rox_merge.core.diff import myers
 from rox_merge.core.diff.models import (
@@ -96,14 +97,33 @@ _ALIGN_CELL_CAP = 4000        # 블록이 너무 크면(성능) 위치 순서 �
 
 
 def _similarity(a: str, b: str) -> float:
-    """두 라인의 문자 단위 유사도 [0,1] (LCS 기반)."""
+    """두 라인의 문자 단위 유사도 [0,1].
+
+    공통 접두/접미는 그대로 매칭으로 세고(정확), 차이나는 중간 구간만
+    문자 다중집합 비교(``SequenceMatcher.quick_ratio``, C 구현)로 근사한다.
+    긴 경로 문자열이 대부분 겹치는 실제 데이터(예: Perforce 워크스페이스 뷰)에서
+    순수 파이썬 LCS 대비 수십 배 빠르며, 짝짓기 결과는 사실상 동일하다.
+    """
     if a == b:
         return 1.0
     if not a or not b:
         return 0.0
-    ops = myers.diff(list(a), list(b))
-    lcs = sum(i2 - i1 for tag, i1, i2, _j1, _j2 in ops if tag == "equal")
-    return 2 * lcs / (len(a) + len(b))
+    na, nb = len(a), len(b)
+    total = na + nb
+    m = min(na, nb)
+    p = 0
+    while p < m and a[p] == b[p]:              # 공통 접두
+        p += 1
+    s = 0
+    while s < m - p and a[na - 1 - s] == b[nb - 1 - s]:  # 공통 접미
+        s += 1
+    am, bm = a[p:na - s], b[p:nb - s]
+    common = p + s
+    if not am or not bm:
+        return 2 * common / total
+    # quick_ratio == 2*M/(len(am)+len(bm)) → 중간 구간의 매칭 문자 수 M 복원
+    mid_matched = SequenceMatcher(None, am, bm, autojunk=False).quick_ratio() * (len(am) + len(bm)) / 2
+    return 2 * (common + mid_matched) / total
 
 
 def _align_replace(
