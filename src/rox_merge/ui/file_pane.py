@@ -310,6 +310,7 @@ class FileComparePane(QWidget):
 
     def reload_from_disk(self) -> None:
         """F5: 좌/우 파일을 디스크에서 다시 로드. 미저장 편집이 있으면 확인 후 진행."""
+        self._ctl.commit_edit()  # 진행 중(미확정) 편집을 확정해 dirty 상태를 정확히 반영
         sides = [s for s in ("left", "right") if self._doc(s).path]
         if not sides:
             return
