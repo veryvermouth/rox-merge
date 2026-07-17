@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rox-merge"
-version = "0.2.0"
+version = "0.3.0"
 description = "Araxis Merge 류의 파일·폴더 비교/병합 도구"
 readme = "README.md"
 requires-python = ">=3.11"
