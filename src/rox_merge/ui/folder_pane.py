@@ -218,6 +218,7 @@ class FolderComparePane(QWidget):
         self._save_active()
 
     def refresh(self) -> None:
+        self._hide_diff()  # F5: 하단 파일 diff 창도 닫고 트리만 새로고침
         self._refresh()
 
     def expand_all(self) -> None:
